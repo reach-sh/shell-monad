@@ -250,7 +250,7 @@ func s = Script $ \env ->
 	    (ls, env'') = eval env' s
 	in (definefunc f ls, env'', callfunc f)
   where
-	basename = "f"
+	basename = "p"
 	go env x
 		| S.member f (envFuncs env) = go env (succ x)
 		| otherwise = f
