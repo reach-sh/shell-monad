@@ -13,6 +13,7 @@ Synopsis: shell monad
 Description:
  This is a shell monad, for generating shell scripts.
 Extra-Source-Files:
+  CHANGELOG
   santa.hs
 
 Library
