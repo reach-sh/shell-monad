@@ -10,6 +10,8 @@ module Control.Monad.Shell (
 	linearScript,
 	Var,
 	val,
+	Q,
+	quote,
 	Expr,
 	indent,
 	run,
@@ -21,7 +23,6 @@ module Control.Monad.Shell (
 	globalVar,
 	func,
 	forCmd,
-	quote,
 	readVar,
 	(-|-),
 ) where
@@ -158,7 +159,7 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 -- | Variadic argument version of 'run'.
 --
 -- The command can be passed any number of arguments.
--- As well as passing Text arguments, it also accepts Var arguments,
+-- As well as passing Text and Q arguments, it also accepts Var arguments,
 -- which passes the value of a shell variable to the command.
 --
 -- Convenient usage of 'cmd' requires the following:
