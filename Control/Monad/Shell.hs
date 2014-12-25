@@ -308,8 +308,8 @@ ifCmd' condf cond body = do
   where
 	singleline l =
 		let c = case l of
-			[c@(Cmd {})] -> c
-			[c@(Subshell {})] -> c
+			[c'@(Cmd {})] -> c'
+			[c'@(Subshell {})] -> c'
 			_ -> Subshell L.empty l
 		in toLinearScript [c]
 
@@ -346,5 +346,5 @@ a -|- b = do
 	blines <- runM b
 	add $ Pipe (toExp alines) (toExp blines)
   where
-	toExp [exp] = exp
+	toExp [e] = e
 	toExp l = Subshell L.empty l
