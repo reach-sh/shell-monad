@@ -220,8 +220,8 @@ comment = add . Comment
 -- | Defines a new shell variable.
 --
 -- The name of the variable that appears in the shell script will be based
--- on provided name, but each call to newVar will generate a new, unique
--- variable name.
+-- on provided name (which can be mempty), but each call to newVar will
+-- generate a new, unique variable name.
 newVar
 	:: L.Text -- ^ base of variable name
 	-> Script Var
