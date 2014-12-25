@@ -14,7 +14,7 @@ Description:
  This is a shell monad, for generating shell scripts.
 Extra-Source-Files:
   CHANGELOG
-  santa.hs
+  examples/santa.hs
 
 Library
   GHC-Options: -Wall
