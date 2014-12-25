@@ -287,6 +287,7 @@ readVar (Var vname) = add $ Cmd $ "read " <> getQ (quote vname)
 a -|- b = do
 	alines <- runM a
 	blines <- runM b
-	add $ case (alines, blines) of
-		([ca@(Cmd{})], [cb@(Cmd{})]) -> Pipe ca cb
-		_ -> Pipe (Subshell L.empty alines) (Subshell L.empty blines)
+	add $ Pipe (toExp alines) (toExp blines)
+  where
+	toExp [exp] = exp
+	toExp l = Subshell L.empty l
