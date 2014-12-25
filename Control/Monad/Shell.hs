@@ -20,6 +20,8 @@ module Control.Monad.Shell (
 	Output(..),
 	Val(..),
 	comment,
+	NamedLike(..),
+	NameHinted,
 	newVar,
 	newVarContaining,
 	globalVar,
@@ -244,31 +246,50 @@ add expr = Script $ \env -> ([expr], env, ())
 comment :: L.Text -> Script ()
 comment = add . Comment
 
+-- | Suggests that a shell variable or function have its name contain
+-- the specified Text.
+newtype NamedLike = NamedLike L.Text
+
+-- | Class of values that provide a hint for the name to use for a shell
+-- variable or function.
+--
+-- To skip providing a hint, use '()'.
+-- To provide a hint, use '(NamedLike \"name\")'.
+class NameHinted h where
+	hinted :: (Maybe L.Text -> a) -> h -> a
+
+instance NameHinted () where
+	hinted f _ = f Nothing
+
+instance NameHinted NamedLike where
+	hinted f (NamedLike h) = f (Just h)
+
+instance NameHinted (Maybe L.Text) where
+	hinted = id
+
 -- | Defines a new shell variable.
 --
--- The name of the variable that appears in the shell script will be based
--- on provided name (which can be mempty), but each call to newVar will
--- generate a new, unique variable name.
-newVar
-	:: L.Text -- ^ base of variable name
-	-> Script Var
-newVar basename = Script $ \env ->
-	let v = go env (0 :: Integer)
+-- Each call to newVar will generate a new, unique variable name.
+--
+-- The namehint can influence this name, but is modified to ensure
+-- uniqueness.
+newVar :: (NameHinted namehint) => namehint -> Script Var
+newVar = hinted $ \namehint -> Script $ \env ->
+	let v = go namehint env (0 :: Integer)
 	in ([], modifyEnvVars env (S.insert v), v)
   where
-	go env x
-		| S.member v (envVars env) = go env (succ x)
+	go namehint env x
+		| S.member v (envVars env) = go namehint env (succ x)
 		| otherwise = v
 	  where
-		v = Var $ "_" <> basename <> L.pack (show (x + 1))
+		v = Var $ "_" <> genvarname namehint <> L.pack (show (x + 1))
+	
+	genvarname = maybe "v" (L.filter isAlpha)
 
 -- | Creates a new shell variable, with an initial value.
-newVarContaining
-	:: L.Text -- ^ base of variable name
-	-> L.Text -- ^ value
-	-> Script Var
-newVarContaining basename value = do
-	v@(Var name) <- newVar basename
+newVarContaining :: (NameHinted namehint) => L.Text -> namehint -> Script Var
+newVarContaining value = hinted $ \namehint -> do
+	v@(Var name) <- newVar namehint
 	Script $ \env -> ([Cmd (name <> "=" <> getQ (quote value))], env, v)
 
 -- | Gets a Var that refers to a global variable, such as PATH
@@ -297,9 +318,9 @@ positionalParameters = Var "@"
 -- > removefirstfile = script $ do
 -- >   cmd "rm" =<< takeParameter
 -- >   cmd "echo" "remaining parameters:" positionalParameters
-takeParameter :: Script Var
-takeParameter = do
-	p@(Var name) <- newVar "param"
+takeParameter :: (NameHinted namehint) => namehint -> Script Var
+takeParameter = hinted $ \namehint -> do
+	p@(Var name) <- newVar namehint
 	Script $ \env -> ([Cmd (name <> "=\"$1\""), Cmd "shift"], env, p)
 
 -- | Defines a shell function, and returns an action that can be run to
@@ -308,6 +329,11 @@ takeParameter = do
 -- The action is variadic; it can be passed any number of CmdArgs.
 -- Typically, it will make sense to specify a more concrete type
 -- when defining the shell function.
+--
+-- The shell function will be given a unique name, that is not used by any
+-- other shell function. The namehint can be used to influence the contents
+-- of the function name, which makes for more readable generated shell
+-- code.
 --
 -- For example:
 --
@@ -318,23 +344,28 @@ takeParameter = do
 -- >    hohoho (Val 3)
 -- > 
 -- > mkHohoho :: Script (Val Int -> Script ())
--- > mkHohoho = func $ do
+-- > mkHohoho = func (NamedLike "hohoho") $ do
 -- >    num <- takeParameter
 -- >    forCmd (cmd "seq" "1" num) $ \_n ->
 -- >       cmd "echo" "Ho, ho, ho!" "Merry xmas!"
-func :: ShellCmd callfunc => Script () -> Script callfunc
-func s = Script $ \env ->
-	let f = go env (0 :: Integer)
+func
+	:: (NameHinted namehint, ShellCmd callfunc)
+	=> namehint
+	-> Script ()
+	-> Script callfunc
+func h s = flip hinted h $ \namehint -> Script $ \env ->
+	let f = go (genfuncname namehint) env (0 :: Integer)
 	    env' = modifyEnvFuncs env (S.insert f)
 	    (ls, env'') = eval env' s
 	in (definefunc f ls, env'', callfunc f)
   where
-	basename = "p"
-	go env x
-		| S.member f (envFuncs env) = go env (succ x)
+	go basename env x
+		| S.member f (envFuncs env) = go basename env (succ x)
 		| otherwise = f
 	  where
 		f = Func $ basename <> L.pack (show (x + 1))
+	
+	genfuncname = maybe "p" (L.filter isAlpha)
 
 	definefunc (Func f) ls = (Cmd $ f <> " () { :") : map indent ls ++ [ Cmd "}" ]
 
@@ -356,7 +387,7 @@ a -|- b = do
 -- The action is run for each part, passed a Var containing the part.
 forCmd :: Script () -> (Var -> Script ()) -> Script ()
 forCmd c a = do
-	v@(Var vname) <- newVar "x"
+	v@(Var vname) <- newVar (NamedLike "x")
 	s <- toLinearScript <$> runM c
 	add $ Cmd $ "for " <> vname <> " in $(" <> s <> ")"
 	block "do" (a v)

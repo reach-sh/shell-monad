@@ -21,8 +21,8 @@ main = T.writeFile "santa.sh" $ script $ do
 	hohoho (Val 3)
 
 mkHohoho :: Script (Val Int -> Script ())
-mkHohoho = func $ do
-	num <- takeParameter
+mkHohoho = func (NamedLike "hohoho") $ do
+	num <- takeParameter (NamedLike "num")
 	forCmd (cmd "seq" "1" num) $ \_n ->
 		cmd "echo" "Ho, ho, ho!" "Merry xmas!"
 
@@ -32,6 +32,6 @@ pipeLess c = c -|- cmd "less"
 promptFor :: T.Text -> (Var -> Script ()) -> Script ()
 promptFor prompt cont = do
 	cmd "printf" (prompt <> " ")
-	var <- newVar "prompt"
+	var <- newVar (NamedLike prompt)
 	readVar var
 	cont var
