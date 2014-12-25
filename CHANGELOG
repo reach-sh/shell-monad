@@ -1,3 +1,9 @@
+shell-monad (0.0.4) UNRELEASED; urgency=medium
+
+  * Added positionalParameters and takeParameter.
+
+ -- Joey Hess <id@joeyh.name>  Thu, 25 Dec 2014 12:17:23 -0400
+
 shell-monad (0.0.3) unstable; urgency=medium
 
   * Added Output data type, which alows cmd to accept (Output (Script ()))

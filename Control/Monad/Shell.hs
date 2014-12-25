@@ -22,6 +22,7 @@ module Control.Monad.Shell (
 	newVar,
 	newVarContaining,
 	globalVar,
+	positionalParameters,
 	func,
 	(-|-),
 	forCmd,
@@ -258,6 +259,33 @@ newVarContaining basename value = do
 -- | Gets a Var that refers to a global variable, such as PATH
 globalVar :: L.Text -> Script Var
 globalVar name = Script $ \env -> let v = Var name in ([], modifyEnvVars env (S.insert v), v)
+
+-- | This special Var expands to whatever parameters were passed to the
+-- shell script.
+--
+-- Inside a func, it expands to whatever parameters were passed to the
+-- func.
+--
+-- (This is "$@" in shell)
+positionalParameters :: Var
+positionalParameters = Var "@"
+
+-- | Takes the first positional parameter, removing it from
+-- positionalParameters and returning a new Var that holds the value of the
+-- parameter.
+--
+-- If there are no more positional parameters, an error will be thrown at
+-- runtime.
+--
+-- For example:
+--
+-- > removefirstfile = script $ do
+-- >   cmd "rm" =<< takeParameter
+-- >   cmd "echo" "remaining parameters:" positionalParameters
+takeParameter :: Script Var
+takeParameter = do
+	p@(Var name) <- newVar "p"
+	Script $ \env -> ([Cmd (name <> "=\"$(1)\""), Cmd "shift 1"], env, p)
 
 -- | Defines a shell function, and returns an action that can be run to
 -- call the function.
