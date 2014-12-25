@@ -18,11 +18,13 @@ module Control.Monad.Shell (
 	cmd,
 	CmdArg,
 	Output(..),
+	Val(..),
 	comment,
 	newVar,
 	newVarContaining,
 	globalVar,
 	positionalParameters,
+	takeParameter,
 	func,
 	(-|-),
 	forCmd,
@@ -181,7 +183,7 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 -- >   name <- newVar "name"
 -- >   readVar name
 -- >   cmd "echo" "hello" name
-cmd :: (ShellCmd result) => L.Text -> result
+cmd :: (ShellCmd params) => L.Text -> params
 cmd c = cmdAll c []
 
 class CmdArg a where
@@ -190,6 +192,15 @@ class CmdArg a where
 -- | Text arguments are automatically quoted.
 instance CmdArg L.Text where
 	toTextArg = getQ . quote
+
+-- | String arguments are automatically quoted.
+instance CmdArg String where
+	toTextArg = toTextArg . L.pack
+
+-- | Any value that can be shown can be passed to 'cmd'; just wrap it
+-- inside a Val.
+instance (Show v) => CmdArg (Val v) where
+	toTextArg (Val v) = L.pack (show v)
 
 -- | Var arguments cause the (quoted) value of a shell variable to be
 -- passed to the command.
@@ -200,6 +211,7 @@ instance CmdArg Var where
 instance CmdArg (Quoted L.Text) where
 	toTextArg (Q v) = v
 
+-- | Allows passing the output of a command as a parameter.
 instance CmdArg Output where
 	toTextArg (Output s) = "\"$(" <> linearScript s <> ")\""
 
@@ -220,6 +232,9 @@ instance (f ~ ()) => ShellCmd (Script f) where
 -- > cmd "echo" "hello there," (Output (cmd "whoami"))
 -- > cmd "echo" "root's pwent" (Output (cmd "cat" "/etc/passwd" -|- cmd "grep" "root"))
 newtype Output = Output (Script ())
+
+-- | An arbitrary value.
+newtype Val v = Val v
 
 -- | Adds an Expr to the script.
 add :: Expr -> Script ()
@@ -266,7 +281,7 @@ globalVar name = Script $ \env -> let v = Var name in ([], modifyEnvVars env (S.
 -- Inside a func, it expands to whatever parameters were passed to the
 -- func.
 --
--- (This is "$@" in shell)
+-- (This is `$@` in shell)
 positionalParameters :: Var
 positionalParameters = Var "@"
 
@@ -284,14 +299,30 @@ positionalParameters = Var "@"
 -- >   cmd "echo" "remaining parameters:" positionalParameters
 takeParameter :: Script Var
 takeParameter = do
-	p@(Var name) <- newVar "p"
-	Script $ \env -> ([Cmd (name <> "=\"$(1)\""), Cmd "shift 1"], env, p)
+	p@(Var name) <- newVar "param"
+	Script $ \env -> ([Cmd (name <> "=\"$1\""), Cmd "shift"], env, p)
 
 -- | Defines a shell function, and returns an action that can be run to
 -- call the function.
 --
--- TODO parameter passing to the function
-func :: Script () -> Script (Script ())
+-- The action is variadic; it can be passed any number of CmdArgs.
+-- Typically, it will make sense to specify a more concrete type
+-- when defining the shell function.
+--
+-- For example:
+--
+-- > demo = script $ do
+-- >    hohoho <- mkHohoho
+-- >    hohoho (Val 1)
+-- >    echo "And I heard him exclaim, ere he rode out of sight ..."
+-- >    hohoho (Val 3)
+-- > 
+-- > mkHohoho :: Script (Val Int -> Script ())
+-- > mkHohoho = func $ do
+-- >    num <- takeParameter
+-- >    forCmd (cmd "seq" "1" num) $ \_n ->
+-- >       cmd "echo" "Ho, ho, ho!" "Merry xmas!"
+func :: ShellCmd callfunc => Script () -> Script callfunc
 func s = Script $ \env ->
 	let f = go env (0 :: Integer)
 	    env' = modifyEnvFuncs env (S.insert f)
@@ -307,8 +338,7 @@ func s = Script $ \env ->
 
 	definefunc (Func f) ls = (Cmd $ f <> " () { :") : map indent ls ++ [ Cmd "}" ]
 
-	callfunc :: Func -> Script ()
-	callfunc (Func f) = add $ Cmd f
+	callfunc (Func f) = cmd f
 
 -- | Pipes together two Scripts.
 (-|-) :: Script () -> Script () -> Script ()
