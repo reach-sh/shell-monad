@@ -168,8 +168,10 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 -- | Variadic argument version of 'run'.
 --
 -- The command can be passed any number of arguments.
--- As well as passing Text and Q arguments, it also accepts Var arguments,
--- which passes the value of a shell variable to the command.
+-- As well as passing Text arguments (which are automatically quoted)
+-- and Q arguments (which have already been quoted), it also accepts
+-- Var arguments, which passes the quoted value of a shell variable
+-- to the command.
 --
 -- Convenient usage of 'cmd' requires the following:
 --
