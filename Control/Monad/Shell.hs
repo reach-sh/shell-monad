@@ -11,7 +11,7 @@ module Control.Monad.Shell (
 	linearScript,
 	Var,
 	val,
-	Q,
+	Quoted,
 	quote,
 	Expr,
 	indent,
@@ -45,15 +45,15 @@ newtype Var = Var L.Text
 	deriving (Eq, Ord, Show)
 
 -- | Expand a shell variable to its value.
-val :: Var -> Q
+val :: Var -> Quoted L.Text
 val (Var v) = Q ("\"$" <> v <> "\"")
 
--- | A piece of text that is safely quoted.
-newtype Q = Q { getQ :: L.Text }
+-- | A value that is safely quoted.
+newtype (Show a, Ord a, Eq a) => Quoted a = Q { getQ :: a }
 	deriving (Eq, Ord, Show)
 
-instance Monoid Q where
-	mempty = Q L.empty
+instance (Monoid a, Show a, Ord a) => Monoid (Quoted a) where
+	mempty = Q mempty
 	mappend (Q a) (Q b) = Q (a <> b)
 
 -- | Quotes the value to allow it to be safely exposed to the shell.
@@ -61,7 +61,7 @@ instance Monoid Q where
 -- The method used is to replace ' with '"'"' and wrap the value inside
 -- single quotes. This works for POSIX shells, as well as other shells
 -- like csh.
-quote :: L.Text -> Q
+quote :: L.Text -> Quoted L.Text
 quote t
 	| L.all (isAlphaNum) t = Q t
 	| otherwise = Q $ q <> L.intercalate "'\"'\"'" (L.splitOn q t) <> q
@@ -169,9 +169,9 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 --
 -- The command can be passed any number of arguments.
 -- As well as passing Text arguments (which are automatically quoted)
--- and Q arguments (which have already been quoted), it also accepts
--- Var arguments, which passes the quoted value of a shell variable
--- to the command.
+-- and Quoted Text arguments (which have already been quoted), it
+-- also accepts Var arguments, which passes the quoted value of a
+-- shell variable to the command.
 --
 -- Convenient usage of 'cmd' requires the following:
 --
@@ -200,7 +200,7 @@ instance CmdArg L.Text where
 instance CmdArg Var where
 	toTextArg v = toTextArg (val v)
 
-instance CmdArg Q where
+instance CmdArg (Quoted L.Text) where
 	toTextArg (Q v) = v
 
 class ShellCmd t where
