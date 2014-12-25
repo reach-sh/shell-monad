@@ -282,7 +282,9 @@ newVar = hinted $ \namehint -> Script $ \env ->
 		| S.member v (envVars env) = go namehint env (succ x)
 		| otherwise = v
 	  where
-		v = Var $ "_" <> genvarname namehint <> L.pack (show (x + 1))
+		v = Var $ "_"
+			<> genvarname namehint
+			<> if x == 0 then "" else L.pack (show (x + 1))
 	
 	genvarname = maybe "v" (L.filter isAlpha)
 
@@ -363,7 +365,9 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 		| S.member f (envFuncs env) = go basename env (succ x)
 		| otherwise = f
 	  where
-		f = Func $ basename <> L.pack (show (x + 1))
+		f = Func $ "_"
+			<> basename
+			<> if x == 0 then "" else L.pack (show (x + 1))
 	
 	genfuncname = maybe "p" (L.filter isAlpha)
 
