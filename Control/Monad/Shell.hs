@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Control.Monad.Shell (
 	Script,
@@ -50,11 +51,7 @@ val (Var v) = Q ("\"$" <> v <> "\"")
 
 -- | A value that is safely quoted.
 newtype (Show a, Ord a, Eq a) => Quoted a = Q { getQ :: a }
-	deriving (Eq, Ord, Show)
-
-instance (Monoid a, Show a, Ord a) => Monoid (Quoted a) where
-	mempty = Q mempty
-	mappend (Q a) (Q b) = Q (a <> b)
+	deriving (Eq, Ord, Show, Monoid)
 
 -- | Quotes the value to allow it to be safely exposed to the shell.
 --
