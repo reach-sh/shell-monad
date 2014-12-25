@@ -1,10 +1,10 @@
-shell-monad (0.0.2) UNRELEASED; urgency=medium
+shell-monad (0.0.2) unstable; urgency=medium
 
   * Better constructing of pipes.
   * Added whileCmd, ifCmd, whenCmd, and unlessCmd.
   * Added stopOnFailure and ignoreFailure.
 
- -- Joey Hess <id@joeyh.name>  Wed, 24 Dec 2014 20:22:31 -0400
+ -- Joey Hess <id@joeyh.name>  Thu, 25 Dec 2014 01:11:34 -0400
 
 shell-monad (0.0.1) unstable; urgency=medium
 
