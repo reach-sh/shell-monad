@@ -17,6 +17,7 @@ module Control.Monad.Shell (
 	run,
 	cmd,
 	CmdArg,
+	Output(..),
 	comment,
 	newVar,
 	newVarContaining,
@@ -198,6 +199,9 @@ instance CmdArg Var where
 instance CmdArg (Quoted L.Text) where
 	toTextArg (Q v) = v
 
+instance CmdArg Output where
+	toTextArg (Output s) = "\"$(" <> linearScript s <> ")\""
+
 class ShellCmd t where
 	cmdAll :: L.Text -> [L.Text] -> t
 
@@ -206,6 +210,15 @@ instance (CmdArg arg, ShellCmd result) => ShellCmd (arg -> result) where
 
 instance (f ~ ()) => ShellCmd (Script f) where
 	cmdAll c acc = add $ Cmd $ L.intercalate " " (c:reverse acc)
+
+-- | The output of a command, or even a more complicated Script
+-- can be passed as a parameter to 'cmd'
+--
+-- Examples:
+--
+-- > cmd "echo" "hello there," (Output (cmd "whoami"))
+-- > cmd "echo" "root's pwent" (Output (cmd "cat" "/etc/passwd" -|- cmd "grep" "root"))
+newtype Output = Output (Script ())
 
 -- | Adds an Expr to the script.
 add :: Expr -> Script ()
