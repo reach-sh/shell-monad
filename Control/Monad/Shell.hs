@@ -343,7 +343,7 @@ block word s = do
 	add $ Cmd $ word <> " :"
 	mapM_ (add . indent) =<< runM s
 
--- | Generates shell code to read a variable from stdin.
+-- | Generates shell code to fill a variable with a line read from stdin.
 readVar :: Var -> Script ()
 readVar (Var vname) = add $ Cmd $ "read " <> getQ (quote vname)
 
