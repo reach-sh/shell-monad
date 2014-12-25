@@ -23,13 +23,15 @@ module Control.Monad.Shell (
 	newVarContaining,
 	globalVar,
 	func,
+	(-|-),
 	forCmd,
 	whileCmd,
 	ifCmd,
 	whenCmd,
 	unlessCmd,
 	readVar,
-	(-|-),
+	stopOnFailure,
+	ignoreFailure,
 ) where
 
 import qualified Data.Text.Lazy as L
@@ -270,6 +272,16 @@ func s = Script $ \env ->
 	callfunc :: Func -> Script ()
 	callfunc (Func f) = add $ Cmd f
 
+-- | Pipes together two Scripts.
+(-|-) :: Script () -> Script () -> Script ()
+a -|- b = do
+	alines <- runM a
+	blines <- runM b
+	add $ Pipe (toExp alines) (toExp blines)
+  where
+	toExp [e] = e
+	toExp l = Subshell L.empty l
+
 -- | Runs the command, and separates its output into parts
 -- (using the IFS)
 --
@@ -339,12 +351,19 @@ block word s = do
 readVar :: Var -> Script ()
 readVar (Var vname) = add $ Cmd $ "read " <> getQ (quote vname)
 
--- | Pipes together two Scripts.
-(-|-) :: Script () -> Script () -> Script ()
-a -|- b = do
-	alines <- runM a
-	blines <- runM b
-	add $ Pipe (toExp alines) (toExp blines)
+-- | By default, shell scripts continue running past commands that exit
+-- nonzero. Use "stopOnFailure True" to make the script stop on the first
+-- such command.
+stopOnFailure :: Bool -> Script ()
+stopOnFailure b = add $ Cmd $ "set " <> if b then "-" else "+" <> "x"
+
+-- | Makes a nonzero exit status be ignored.
+ignoreFailure :: Script () -> Script ()
+ignoreFailure s = runM s >>= mapM_ (add . go)
   where
-	toExp [e] = e
-	toExp l = Subshell L.empty l
+	go (Cmd t) = Cmd $ t <> " || true"
+	go c@(Comment _) = c
+	go c@(HereDocBody _) = c
+	go (Subshell i l) = Subshell i (map go l)
+	-- Assumes pipefail is not set.
+	go (Pipe e1 e2) = Pipe e1 (go e2)
