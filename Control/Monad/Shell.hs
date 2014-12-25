@@ -16,6 +16,7 @@ module Control.Monad.Shell (
 	quote,
 	run,
 	cmd,
+	CmdArg,
 	comment,
 	newVar,
 	newVarContaining,
@@ -161,11 +162,7 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 
 -- | Variadic argument version of 'run'.
 --
--- The command can be passed any number of arguments.
--- As well as passing Text arguments (which are automatically quoted)
--- and Quoted Text arguments (which have already been quoted), it
--- also accepts Var arguments, which passes the quoted value of a
--- shell variable to the command.
+-- The command can be passed any number of CmdArgs.
 --
 -- Convenient usage of 'cmd' requires the following:
 --
@@ -188,12 +185,16 @@ cmd c = cmdAll c []
 class CmdArg a where
 	toTextArg :: a -> L.Text
 
+-- | Text arguments are automatically quoted.
 instance CmdArg L.Text where
 	toTextArg = getQ . quote
 
+-- | Var arguments cause the (quoted) value of a shell variable to be
+-- passed to the command.
 instance CmdArg Var where
 	toTextArg v = toTextArg (val v)
 
+-- | Quoted Text arguments are passed as-is.
 instance CmdArg (Quoted L.Text) where
 	toTextArg (Q v) = v
 
