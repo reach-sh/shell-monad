@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module Control.Monad.Shell (
 	Script,
@@ -23,6 +24,10 @@ module Control.Monad.Shell (
 	globalVar,
 	func,
 	forCmd,
+	whileCmd,
+	ifCmd,
+	whenCmd,
+	unlessCmd,
 	readVar,
 	(-|-),
 ) where
@@ -30,6 +35,7 @@ module Control.Monad.Shell (
 import qualified Data.Text.Lazy as L
 import qualified Data.Set as S
 import Data.Monoid
+import Control.Applicative
 import Data.Char
 
 -- | A shell variable.
@@ -82,6 +88,7 @@ indent (Pipe e1 e2) = Pipe (indent e1) (indent e2)
 
 -- | Shell script monad.
 newtype Script a = Script (Env -> ([Expr], Env, a))
+	deriving (Functor)
 
 instance Monad Script where
         return ret = Script $ \env -> ([], env, ret)
@@ -167,7 +174,7 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 -- > {-# LANGUAGE OverloadedStrings, ExtendedDefaultRules #-}
 -- > {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 -- > import Control.Monad.Shell
--- > import qualified Data.Text.Lazy as T
+-- > import qualified Data.Text.Lazy as L
 -- > default (L.Text)
 --
 -- This allows writing, for example:
@@ -270,13 +277,63 @@ func s = Script $ \env ->
 forCmd :: Script () -> (Var -> Script ()) -> Script ()
 forCmd c a = do
 	v@(Var vname) <- newVar "x"
-	cmdlines <- runM c
-	add $ Cmd $ "for " <> vname <> " in $(" <> toLinearScript cmdlines <> ")"
-	-- Using : as the first command in the loop ensures that the loop
-	-- body is not empty, and allows for more regular indentation.
-	add $ Cmd "do :"
-	mapM_ (add . indent) =<< runM (a v)
+	s <- toLinearScript <$> runM c
+	add $ Cmd $ "for " <> vname <> " in $(" <> s <> ")"
+	block "do" (a v)
 	add $ Cmd "done"
+
+-- | As long as the first Script exits nonzero, runs the second script.
+whileCmd :: Script () -> Script () -> Script ()
+whileCmd c a = do
+	s <- toLinearScript <$> runM c
+	add $ Cmd $ "while $(" <> s <> ")"
+	block "do" a
+	add $ Cmd "done"
+
+-- | if with a monadic conditional
+--
+-- If the conditional exits 0, the first action is run, else the second.
+ifCmd :: Script () -> Script () -> Script () -> Script ()
+ifCmd cond thena elsea = 
+	ifCmd' id cond $ do
+		block "then" thena
+		block "else" elsea
+
+ifCmd' :: (L.Text -> L.Text) -> Script () -> Script () -> Script ()
+ifCmd' condf cond body = do
+	condl <- runM cond
+	add $ Cmd $ "if " <> condf (singleline condl)
+	body
+	add $ Cmd "fi"
+  where
+	singleline l =
+		let c = case l of
+			[c@(Cmd {})] -> c
+			[c@(Subshell {})] -> c
+			_ -> Subshell L.empty l
+		in toLinearScript [c]
+
+-- | when with a monadic conditional
+whenCmd :: Script () -> Script () -> Script ()
+whenCmd cond a = 
+	ifCmd' id cond $
+		block "then" a
+
+-- | unless with a monadic conditional
+unlessCmd :: Script () -> Script () -> Script ()
+unlessCmd cond a =
+	ifCmd' ("! " <>) cond $
+		block "then" a
+
+-- | Creates a block such as "do : ; cmd ; cmd" or "else : ; cmd ; cmd"
+--
+-- The use of : ensures that the block is not empty, and allows
+-- for more regular indetnetion, as well as making the single line
+-- formatting work.
+block :: L.Text -> Script () -> Script ()
+block word s = do
+	add $ Cmd $ word <> " :"
+	mapM_ (add . indent) =<< runM s
 
 -- | Generates shell code to read a variable from stdin.
 readVar :: Var -> Script ()
