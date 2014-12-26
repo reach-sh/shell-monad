@@ -48,7 +48,7 @@ module Control.Monad.Shell (
 	toStderr,
 	(>&),
 	(<&),
-	(|&),
+	(&),
 	hereDocument,
 ) where
 
@@ -637,13 +637,13 @@ s |< f = redir s (fileRedir f stdInput RedirFromFile)
 
 -- | Redirects a script's output to stderr.
 toStderr :: Script () -> Script ()
-toStderr s = s |&stdOutput>&stdError
+toStderr s = s &stdOutput>&stdError
 
 -- | Redirects the first file descriptor to output to the second.
 --
 -- For example, to redirect a command's stderr to stdout:
 --
--- > cmd "foo" |&stdError>&stdOutput
+-- > cmd "foo" &stdError>&stdOutput
 (>&) :: (Script (), Fd) -> Fd -> Script ()
 (s, fd1) >& fd2 = redir s (RedirOutput fd1 fd2)
 
@@ -651,13 +651,13 @@ toStderr s = s |&stdOutput>&stdError
 --
 -- For example, to read from Fd 42:
 --
--- > cmd "foo" |&stdInput<&Fd 42
+-- > cmd "foo" &stdInput<&Fd 42
 (<&) :: (Script (), Fd) -> Fd -> Script ()
 (s, fd1) <& fd2 = redir s (RedirInput fd1 fd2)
 
 -- | Helper for '>&' and '<&'
-(|&) :: Script () -> Fd -> (Script (), Fd)
-(|&) = (,)
+(&) :: Script () -> Fd -> (Script (), Fd)
+(&) = (,)
 
 -- | Provides the Text as input to the Script, using a here-document.
 hereDocument :: Script () -> L.Text -> Script ()
