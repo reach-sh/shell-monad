@@ -14,6 +14,7 @@ module Control.Monad.Shell (
 	val,
 	Quoted,
 	quote,
+	glob,
 	run,
 	cmd,
 	CmdArg,
@@ -59,7 +60,7 @@ val (Var v) = Q ("\"$" <> v <> "\"")
 newtype Quoted a = Q { getQ :: a }
 	deriving (Eq, Ord, Show, Monoid)
 
--- | Quotes the value to allow it to be safely exposed to the shell.
+-- | Quotes the Text to allow it to be safely exposed to the shell.
 --
 -- The method used is to replace ' with '"'"' and wrap the value inside
 -- single quotes. This works for POSIX shells, as well as other shells
@@ -70,6 +71,20 @@ quote t
 	| otherwise = Q $ q <> L.intercalate "'\"'\"'" (L.splitOn q t) <> q
   where
 	q = "'"
+
+-- | Treats the Text as a glob, which expands to one parameter per
+-- matching file.
+--
+-- The input is assumed to be a well-formed glob. Characters in it that
+-- are not alphanumeric and are not wildcard characters will be escaped
+-- before it is exposed to the shell. This allows eg, spaces in globs.
+glob :: L.Text -> Quoted L.Text
+glob = Q . L.concatMap escape
+  where
+	escape c
+		| isAlphaNum c = L.singleton c
+		| c `elem` "*?[!-:]\\" = L.singleton c
+		| otherwise = "\\" <> L.singleton c
 
 -- | A shell function.
 newtype Func = Func L.Text
