@@ -29,6 +29,8 @@ module Control.Monad.Shell (
 	takeParameter,
 	func,
 	(-|-),
+	(-&&-),
+	(-||-),
 	forCmd,
 	whileCmd,
 	ifCmd,
@@ -80,6 +82,8 @@ data Expr
 	| HereDocBody L.Text -- ^ the body of a here-doc
 	| Subshell L.Text [Expr] -- ^ expressions run in a sub-shell
 	| Pipe Expr Expr -- ^ Piping the first Expr to the second Expr
+	| And Expr Expr -- ^ &&
+	| Or Expr Expr -- ^ ||
 
 -- | Indents an Expr
 indent :: Expr -> Expr
@@ -88,6 +92,8 @@ indent (Comment t) = Comment $ "\t" <> t
 indent (HereDocBody t) = HereDocBody t -- cannot indent
 indent (Subshell i l) = Subshell ("\t" <> i) (map indent l)
 indent (Pipe e1 e2) = Pipe (indent e1) (indent e2)
+indent (And e1 e2) = And (indent e1) (indent e2)
+indent (Or e1 e2) = Or (indent e1) (indent e2)
 
 -- | Shell script monad.
 newtype Script a = Script (Env -> ([Expr], Env, a))
@@ -146,6 +152,8 @@ script = flip mappend "\n" . L.intercalate "\n" . ("#!/bin/sh":) . map fmt . gen
 	fmt (HereDocBody t) = t
 	fmt (Subshell i l) = i <> "(\n" <> L.intercalate "\n" (map (fmt . indent) l) <> "\n" <> i <> ")"
 	fmt (Pipe e1 e2) = fmt e1 <> " | " <> fmt e2
+	fmt (And e1 e2) = fmt e1 <> " && " <> fmt e2
+	fmt (Or e1 e2) = fmt e1 <> " || " <> fmt e2
 
 -- | Generates a single line of shell code.
 linearScript :: Script f -> L.Text
@@ -161,6 +169,8 @@ toLinearScript = L.intercalate "; " . map fmt
 	fmt (HereDocBody _) = ""
 	fmt (Subshell i l) = i <> "(" <> L.intercalate "; " (map (fmt . indent) l) <> i <> ")"
 	fmt (Pipe e1 e2) = fmt e1 <> " | " <> fmt e2
+	fmt (And e1 e2) = fmt e1 <> " && " <> fmt e2
+	fmt (Or e1 e2) = fmt e1 <> " || " <> fmt e2
 
 -- | Adds a shell command to the script.
 run :: L.Text -> [L.Text] -> Script ()
@@ -377,10 +387,21 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 
 -- | Pipes together two Scripts.
 (-|-) :: Script () -> Script () -> Script ()
-a -|- b = do
+(-|-) = combine Pipe
+
+-- | ANDs two Scripts.
+(-&&-) :: Script () -> Script () -> Script ()
+(-&&-) = combine And
+
+-- | ORs two Scripts.
+(-||-) :: Script () -> Script () -> Script ()
+(-||-) = combine Or
+
+combine :: (Expr -> Expr -> Expr) -> Script () -> Script () -> Script ()
+combine f a b = do
 	alines <- runM a
 	blines <- runM b
-	add $ Pipe (toExp alines) (toExp blines)
+	add $ f (toExp alines) (toExp blines)
   where
 	toExp [e] = e
 	toExp l = Subshell L.empty l
@@ -464,9 +485,15 @@ stopOnFailure b = add $ Cmd $ "set " <> if b then "-" else "+" <> "x"
 ignoreFailure :: Script () -> Script ()
 ignoreFailure s = runM s >>= mapM_ (add . go)
   where
-	go (Cmd t) = Cmd $ t <> " || true"
+	go c@(Cmd _) = Or c true
 	go c@(Comment _) = c
 	go c@(HereDocBody _) = c
 	go (Subshell i l) = Subshell i (map go l)
 	-- Assumes pipefail is not set.
 	go (Pipe e1 e2) = Pipe e1 (go e2)
+	-- Note that in shell, a && b || true will result in true;
+	-- there is no need for extra parens.
+	go c@(And _ _) = Or c true
+	go (Or e1 e2) = Or e1 (go e2)
+
+	true = Cmd "true"

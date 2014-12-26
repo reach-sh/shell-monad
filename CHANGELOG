@@ -2,6 +2,7 @@ shell-monad (0.2.0) UNRELEASED; urgency=medium
 
   * newVar, newVarContaining, takeParameter, and func all
     now take a namehint parameter, which can be () or (NameHinted "foo").
+  * Added -&&- and -||-
 
  -- Joey Hess <id@joeyh.name>  Thu, 25 Dec 2014 15:51:45 -0400
 
