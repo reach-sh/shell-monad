@@ -651,7 +651,7 @@ toStderr s = s |&stdOutput>&stdError
 --
 -- For example, to read from Fd 42:
 --
--- > cmd "foo" |&Fd 42<&stdOutput
+-- > cmd "foo" |&stdInput<&Fd 42
 (<&) :: (Script (), Fd) -> Fd -> Script ()
 (s, fd1) <& fd2 = redir s (RedirInput fd1 fd2)
 
