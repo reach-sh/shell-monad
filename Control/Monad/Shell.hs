@@ -226,11 +226,11 @@ fmt multiline = go
 			use $ redirFd fd1 (Just stdInput) <> "<&" <> showFd fd2
 		(RedirHereDoc t)
 			| multiline -> 
-				let marker = eofMarker t
-				in use $ "<<" <> marker <> "\n"
+				let myEOF = eofMarker t
+				in use $ "<<" <> myEOF <> "\n"
 					<> t 
 					<> "\n" 
-					<> marker
+					<> myEOF
 			-- Here documents cannot be represented in a single
 			-- line script. Instead, generate:
 			-- (echo l1; echo l2; ...) | cmd
