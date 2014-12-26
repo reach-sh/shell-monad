@@ -160,32 +160,33 @@ runM s = Script $ \env ->
 -- | Generates a shell script, including hashbang,
 -- suitable to be written to a file.
 script :: Script f -> L.Text
-script = flip mappend "\n" . L.intercalate "\n" . ("#!/bin/sh":) . map fmt . gen
+script = flip mappend "\n" . L.intercalate "\n" . 
+	("#!/bin/sh":) . map (fmt True) . gen
   where
-	fmt (Cmd t) = t
-	fmt (Comment t) = "# " <> L.filter (/= '\n') t
-	fmt (HereDocBody t) = t
-	fmt (Subshell i l) = i <> "(\n" <> L.intercalate "\n" (map (fmt . indent) l) <> "\n" <> i <> ")"
-	fmt (Pipe e1 e2) = fmt e1 <> " | " <> fmt e2
-	fmt (And e1 e2) = fmt e1 <> " && " <> fmt e2
-	fmt (Or e1 e2) = fmt e1 <> " || " <> fmt e2
+
+fmt :: Bool -> Expr -> L.Text
+fmt _ (Cmd t) = t
+fmt multiline (Comment t)
+	| multiline = "# " <> L.filter (/= '\n') t
+	-- Use : as a no-op command, and pass the comment to it.
+	| otherwise = ": " <> getQ (quote (L.filter (/= '\n') t))
+fmt multiline (HereDocBody t)
+	| multiline = t
+	-- No way to express a here-doc in a single line.
+	| otherwise = ""
+fmt multiline (Subshell i l) =
+	let (wrap, sep) = if multiline then ("\n", "\n") else ("", ";")
+	in i <> "(" <> wrap <> L.intercalate sep (map (fmt multiline . indent) l) <> wrap <> i <> ")"
+fmt multiline (Pipe e1 e2) = fmt multiline e1 <> " | " <> fmt multiline e2
+fmt multiline (And e1 e2) = fmt multiline e1 <> " && " <> fmt multiline e2
+fmt multiline (Or e1 e2) = fmt multiline e1 <> " || " <> fmt multiline e2
 
 -- | Generates a single line of shell code.
 linearScript :: Script f -> L.Text
 linearScript = toLinearScript . gen
 
 toLinearScript :: [Expr] -> L.Text
-toLinearScript = L.intercalate "; " . map fmt
-  where
-	fmt (Cmd t) = t
-	-- Use : as a no-op command, and pass the comment to it.
-	fmt (Comment t) = ": " <> getQ (quote (L.filter (/= '\n') t))
-	-- No way to express a here-doc in a single line.
-	fmt (HereDocBody _) = ""
-	fmt (Subshell i l) = i <> "(" <> L.intercalate "; " (map (fmt . indent) l) <> i <> ")"
-	fmt (Pipe e1 e2) = fmt e1 <> " | " <> fmt e2
-	fmt (And e1 e2) = fmt e1 <> " && " <> fmt e2
-	fmt (Or e1 e2) = fmt e1 <> " || " <> fmt e2
+toLinearScript = L.intercalate "; " . map (fmt False)
 
 -- | Adds a shell command to the script.
 run :: L.Text -> [L.Text] -> Script ()
