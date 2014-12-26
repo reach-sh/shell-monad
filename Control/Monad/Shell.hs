@@ -406,7 +406,20 @@ instance NameHinted (Maybe L.Text) where
 -- The namehint can influence this name, but is modified to ensure
 -- uniqueness.
 newVar :: (NameHinted namehint) => namehint -> Script Var
-newVar = hinted $ \namehint -> Script $ \env ->
+newVar = newVarContaining ""
+
+-- | Creates a new shell variable, with an initial value.
+newVarContaining :: (NameHinted namehint) => L.Text -> namehint -> Script Var
+newVarContaining value = hinted $ \namehint -> do
+	v@(Var { varName = VarName name }) <- newVarUnsafe namehint
+	Script $ \env -> ([Cmd (name <> "=" <> getQ (quote value))], env, v)
+
+-- | Creates a new shell variable, but does not ensure that it's not
+-- already set to something. For use when the caller is going to generate
+-- some shell script that is guaranteed to clobber any existing value of
+-- the variable.
+newVarUnsafe :: (NameHinted namehint) => namehint -> Script Var
+newVarUnsafe = hinted $ \namehint -> Script $ \env ->
 	let v = go namehint env (0 :: Integer)
 	in ([], modifyEnvVars env (S.insert (varName v)), v)
   where
@@ -421,18 +434,12 @@ newVar = hinted $ \namehint -> Script $ \env ->
 	
 	genvarname = maybe "v" (L.filter isAlpha)
 
--- | Creates a new shell variable, with an initial value.
-newVarContaining :: (NameHinted namehint) => L.Text -> namehint -> Script Var
-newVarContaining value = hinted $ \namehint -> do
-	v@(Var { varName = VarName name }) <- newVar namehint
-	Script $ \env -> ([Cmd (name <> "=" <> getQ (quote value))], env, v)
-
 -- | Generates a new Var. Expanding this Var will yield the same
 -- result as expanding the input Var, unless that is "", in which case
 -- it instead defaults to the expansion of the param.
 defaultVar :: (Param param) => Var -> param -> Script Var
 defaultVar (Var { varName = VarName varname }) p = do
-	v <- newVar (NamedLike varname)
+	v <- newVarUnsafe (NamedLike varname)
 	return $ v
 		{ expandVar = \env _ -> Q $
 			"\"${" <> varname <> ":-" <> toTextParam p env <> "}\""
@@ -468,7 +475,7 @@ positionalParameters = simpleVar (VarName "@")
 -- >   cmd "echo" "remaining parameters:" positionalParameters
 takeParameter :: (NameHinted namehint) => namehint -> Script Var
 takeParameter = hinted $ \namehint -> do
-	p@(Var { varName = VarName name}) <- newVar namehint
+	p@(Var { varName = VarName name}) <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (name <> "=\"$1\""), Cmd "shift"], env, p)
 
 -- | Defines a shell function, and returns an action that can be run to
@@ -527,7 +534,7 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 -- The action is run for each part, passed a Var containing the part.
 forCmd :: Script () -> (Var -> Script ()) -> Script ()
 forCmd c a = do
-	v@(Var { varName = VarName varname}) <- newVar (NamedLike "x")
+	v@(Var { varName = VarName varname}) <- newVarUnsafe (NamedLike "x")
 	s <- toLinearScript <$> runM c
 	add $ Cmd $ "for " <> varname <> " in $(" <> s <> ")"
 	block "do" (a v)
