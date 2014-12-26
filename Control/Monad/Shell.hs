@@ -11,7 +11,6 @@ module Control.Monad.Shell (
 	script,
 	linearScript,
 	Var,
-	val,
 	Quoted,
 	quote,
 	glob,
@@ -21,11 +20,13 @@ module Control.Monad.Shell (
 	CmdParams,
 	Output(..),
 	Val(..),
+	WithVar(..),
 	comment,
 	NamedLike(..),
 	NameHinted,
 	newVar,
 	newVarContaining,
+	defaultVar,
 	globalVar,
 	positionalParameters,
 	takeParameter,
@@ -61,12 +62,21 @@ import System.Posix.Types (Fd)
 import System.Posix.IO (stdInput, stdOutput, stdError)
 
 -- | A shell variable.
-newtype Var = Var L.Text
+data Var = Var
+	{ varName :: VarName
+	, expandVar :: Env -> VarName -> Quoted L.Text
+	}
+
+newtype VarName = VarName L.Text
 	deriving (Eq, Ord, Show)
 
--- | Expand a shell variable to its value.
-val :: Var -> Quoted L.Text
-val (Var v) = Q ("\"$" <> v <> "\"")
+simpleVar :: VarName -> Var
+simpleVar name = Var
+	{ varName = name
+	-- Used to expand the variable; can be overridden for other
+	-- types of variable expansion.
+	, expandVar = \_ (VarName n) -> Q ("\"$" <> n <> "\"")
+	}
 
 -- | A value that is safely quoted.
 newtype Quoted a = Q { getQ :: a }
@@ -148,7 +158,7 @@ instance Monad Script where
 -- | Environment built up by the shell script monad,
 -- so it knows which environment variables and functions are in use.
 data Env = Env
-	{ envVars :: S.Set Var
+	{ envVars :: S.Set VarName
 	, envFuncs :: S.Set Func
 	}
 
@@ -156,7 +166,7 @@ instance Monoid Env where
 	mempty = Env mempty mempty
 	mappend a b = Env (envVars a <> envVars b) (envFuncs a <> envFuncs b)
 
-modifyEnvVars :: Env -> (S.Set Var -> S.Set Var) -> Env
+modifyEnvVars :: Env -> (S.Set VarName -> S.Set VarName) -> Env
 modifyEnvVars env f = env { envVars = f (envVars env) }
 
 modifyEnvFuncs :: Env -> (S.Set Func -> S.Set Func) -> Env
@@ -309,7 +319,12 @@ instance (Show v) => Param (Val v) where
 -- | Var arguments cause the (quoted) value of a shell variable to be
 -- passed to the command.
 instance Param Var where
-	toTextParam = toTextParam . val
+	toTextParam v = \env -> getQ $ expandVar v env (varName v)
+
+-- | Allows modifying the value of a shell variable before it is passed to
+-- the command.
+instance Param WithVar where
+	toTextParam (WithVar v f) = getQ . f . Q . toTextParam v
 
 -- | Quoted Text arguments are passed as-is.
 instance Param (Quoted L.Text) where
@@ -344,6 +359,13 @@ newtype Output = Output (Script ())
 
 -- | An arbitrary value.
 newtype Val v = Val v
+
+-- | Allows modifying the value of a variable before it is passed to a
+-- command. The function is passed a Quoted Text which will expand to the
+-- value of the variable, and can modify it, by using eg 'mappend'.
+--
+-- > cmd "rmdir" (WithVar name ("/home/" <>))
+data WithVar = WithVar Var (Quoted L.Text -> Quoted L.Text)
 
 -- | Adds an Expr to the script.
 add :: Expr -> Script ()
@@ -383,13 +405,14 @@ instance NameHinted (Maybe L.Text) where
 newVar :: (NameHinted namehint) => namehint -> Script Var
 newVar = hinted $ \namehint -> Script $ \env ->
 	let v = go namehint env (0 :: Integer)
-	in ([], modifyEnvVars env (S.insert v), v)
+	in ([], modifyEnvVars env (S.insert (varName v)), v)
   where
 	go namehint env x
-		| S.member v (envVars env) = go namehint env (succ x)
+		| S.member (varName v) (envVars env) =
+			go namehint env (succ x)
 		| otherwise = v
 	  where
-		v = Var $ "_"
+		v = simpleVar $ VarName $ "_"
 			<> genvarname namehint
 			<> if x == 0 then "" else L.pack (show (x + 1))
 	
@@ -398,12 +421,25 @@ newVar = hinted $ \namehint -> Script $ \env ->
 -- | Creates a new shell variable, with an initial value.
 newVarContaining :: (NameHinted namehint) => L.Text -> namehint -> Script Var
 newVarContaining value = hinted $ \namehint -> do
-	v@(Var name) <- newVar namehint
+	v@(Var { varName = VarName name }) <- newVar namehint
 	Script $ \env -> ([Cmd (name <> "=" <> getQ (quote value))], env, v)
+
+-- | Generates a new Var. Expanding this Var will yield the same
+-- result as expanding the input Var, unless that is "", in which case
+-- it instead defaults to the expansion of the param.
+defaultVar :: (Param param) => Var -> param -> Script Var
+defaultVar (Var { varName = VarName varname }) p = do
+	v <- newVar (NamedLike varname)
+	return $ v
+		{ expandVar = \env _ -> Q $
+			"\"${" <> varname <> ":-" <> toTextParam p env <> "}\""
+		}
 
 -- | Gets a Var that refers to a global variable, such as PATH
 globalVar :: L.Text -> Script Var
-globalVar name = Script $ \env -> let v = Var name in ([], modifyEnvVars env (S.insert v), v)
+globalVar name = Script $ \env ->
+	let v = simpleVar (VarName name)
+	in ([], modifyEnvVars env (S.insert (varName v)), v)
 
 -- | This special Var expands to whatever parameters were passed to the
 -- shell script.
@@ -413,7 +449,7 @@ globalVar name = Script $ \env -> let v = Var name in ([], modifyEnvVars env (S.
 --
 -- (This is `$@` in shell)
 positionalParameters :: Var
-positionalParameters = Var "@"
+positionalParameters = simpleVar (VarName "@")
 
 -- | Takes the first positional parameter, removing it from
 -- positionalParameters and returning a new Var that holds the value of the
@@ -429,7 +465,7 @@ positionalParameters = Var "@"
 -- >   cmd "echo" "remaining parameters:" positionalParameters
 takeParameter :: (NameHinted namehint) => namehint -> Script Var
 takeParameter = hinted $ \namehint -> do
-	p@(Var name) <- newVar namehint
+	p@(Var { varName = VarName name}) <- newVar namehint
 	Script $ \env -> ([Cmd (name <> "=\"$1\""), Cmd "shift"], env, p)
 
 -- | Defines a shell function, and returns an action that can be run to
@@ -488,9 +524,9 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 -- The action is run for each part, passed a Var containing the part.
 forCmd :: Script () -> (Var -> Script ()) -> Script ()
 forCmd c a = do
-	v@(Var vname) <- newVar (NamedLike "x")
+	v@(Var { varName = VarName varname}) <- newVar (NamedLike "x")
 	s <- toLinearScript <$> runM c
-	add $ Cmd $ "for " <> vname <> " in $(" <> s <> ")"
+	add $ Cmd $ "for " <> varname <> " in $(" <> s <> ")"
 	block "do" (a v)
 	add $ Cmd "done"
 
@@ -549,7 +585,8 @@ block word s = do
 
 -- | Generates shell code to fill a variable with a line read from stdin.
 readVar :: Var -> Script ()
-readVar (Var vname) = add $ Cmd $ "read " <> getQ (quote vname)
+readVar (Var { varName = VarName varname }) = add $
+	Cmd $ "read " <> getQ (quote varname)
 
 -- | By default, shell scripts continue running past commands that exit
 -- nonzero. Use "stopOnFailure True" to make the script stop on the first

@@ -1,6 +1,9 @@
 shell-monad (0.3.0) UNRELEASED; urgency=medium
 
   * Renamed a few operators.
+  * Added defaultVar.
+  * Due to changes in how variable expansion is handled, the val function
+    has been removed, and WithVar should be used instead.
 
  -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 15:53:08 -0400
 

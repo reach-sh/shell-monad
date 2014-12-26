@@ -11,9 +11,9 @@ main = T.writeFile "santa.sh" $ script $ do
 	hohoho <- mkHohoho
 	hohoho (Val 1)
 
-	promptFor "What's your name?" $ \name -> pipeLess $ do
-		cmd "echo" "Let's see what's in" (val name <> quote "'s") "stocking!"
-		forCmd (cmd "ls" "-1" (quote "/home/" <> val name)) $ \f -> do
+	promptFor "What's your name?" "virginia" $ \name -> pipeLess $ do
+		cmd "echo" "Let's see what's in" (WithVar name (<> quote "'s")) "stocking!"
+		forCmd (cmd "ls" "-1" (WithVar name (quote "/home/" <>))) $ \f -> do
 			cmd "echo" "a shiny new" f
 			hohoho (Val 1)
 
@@ -29,9 +29,9 @@ mkHohoho = func (NamedLike "hohoho") $ do
 pipeLess :: Script () -> Script ()
 pipeLess c = c -|- cmd "less"
 
-promptFor :: T.Text -> (Var -> Script ()) -> Script ()
-promptFor prompt cont = do
+promptFor :: T.Text -> T.Text -> (Var -> Script ()) -> Script ()
+promptFor prompt defaultname cont = do
 	cmd "printf" (prompt <> " ")
 	var <- newVar (NamedLike prompt)
 	readVar var
-	cont var
+	cont =<< defaultVar var defaultname
