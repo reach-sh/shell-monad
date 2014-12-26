@@ -262,7 +262,14 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 --
 -- The command can be passed any number of CmdArgs.
 --
--- Convenient usage of 'cmd' requires the following:
+-- > demo = script $ do
+-- >   cmd "echo" "hello, world"
+-- >   name <- newVar "name"
+-- >   readVar name
+-- >   cmd "echo" "hello" name
+--
+-- For the most efficient use of 'cmd', add the following boilerplate,
+-- which will make string literals in your program default to being Text:
 --
 -- > {-# LANGUAGE OverloadedStrings, ExtendedDefaultRules #-}
 -- > {-# OPTIONS_GHC -fno-warn-type-defaults #-}
@@ -270,15 +277,14 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 -- > import qualified Data.Text.Lazy as L
 -- > default (L.Text)
 --
--- This allows writing, for example:
+-- Note that the command to run is itself a CmdArg, so it can be a Text,
+-- or a String, or even a Var or Output. For example, this echos "hi":
 --
 -- > demo = script $ do
--- >   cmd "echo" "hello, world"
--- >   name <- newVar "name"
--- >   readVar name
--- >   cmd "echo" "hello" name
-cmd :: (ShellCmd params) => L.Text -> params
-cmd c = cmdAll c []
+-- 	echovar <- newVarContaining "echo" ()
+-- 	cmd echovar "hi"
+cmd :: (CmdArg command, ShellCmd params) => command -> params
+cmd c = cmdAll (toTextArg c) []
 
 class CmdArg a where
 	toTextArg :: a -> (Env -> L.Text)
@@ -312,15 +318,15 @@ instance CmdArg Output where
 		in "\"$(" <> t <> ")\""
 
 class ShellCmd t where
-	cmdAll :: L.Text -> [Env -> L.Text] -> t
+	cmdAll :: (Env -> L.Text) -> [Env -> L.Text] -> t
 
 instance (CmdArg arg, ShellCmd result) => ShellCmd (arg -> result) where
 	cmdAll c acc x = cmdAll c (toTextArg x : acc)
 
 instance (f ~ ()) => ShellCmd (Script f) where
 	cmdAll c acc = Script $ \env -> 
-		let ps = map (\f -> f env) (reverse acc)
-		in ([Cmd $ L.intercalate " " (c:ps)], env, ())
+		let ps = map (\f -> f env) (c : reverse acc)
+		in ([Cmd $ L.intercalate " " ps], env, ())
 
 -- | The output of a command, or even a more complicated Script
 -- can be passed as a parameter to 'cmd'

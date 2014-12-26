@@ -5,6 +5,10 @@ shell-monad (0.2.1) UNRELEASED; urgency=medium
     which fixes a bug in the unusual case where variables or funtions
     are defined inside Output.
   * Support redirection, including redirection from here-documents.
+  * Here documents are emulated in linearScript output mode.
+  * cmd is now polymorhpic on its first argument, allowing
+    the command to run to be specified using String, Var, or even
+    Output.
 
  -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 00:27:02 -0400
 
