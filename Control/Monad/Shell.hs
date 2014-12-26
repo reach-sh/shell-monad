@@ -29,9 +29,6 @@ module Control.Monad.Shell (
 	positionalParameters,
 	takeParameter,
 	func,
-	(-|-),
-	(-&&-),
-	(-||-),
 	forCmd,
 	whileCmd,
 	ifCmd,
@@ -40,6 +37,16 @@ module Control.Monad.Shell (
 	readVar,
 	stopOnFailure,
 	ignoreFailure,
+	(-|-),
+	(-&&-),
+	(-||-),
+	(|>),
+	(|>>),
+	(|<),
+	(|>&),
+	toStderr,
+	(|<&),
+	hereDocument,
 ) where
 
 import qualified Data.Text.Lazy as L
@@ -47,6 +54,8 @@ import qualified Data.Set as S
 import Data.Monoid
 import Control.Applicative
 import Data.Char
+import System.Posix.Types (Fd)
+import System.Posix.IO (stdInput, stdOutput, stdError)
 
 -- | A shell variable.
 newtype Var = Var L.Text
@@ -94,21 +103,30 @@ newtype Func = Func L.Text
 data Expr
 	= Cmd L.Text -- ^ a command
 	| Comment L.Text -- ^ a comment
-	| HereDocBody L.Text -- ^ the body of a here-doc
 	| Subshell L.Text [Expr] -- ^ expressions run in a sub-shell
 	| Pipe Expr Expr -- ^ Piping the first Expr to the second Expr
 	| And Expr Expr -- ^ &&
 	| Or Expr Expr -- ^ ||
+	| Redir Expr RedirSpec -- ^ Redirects a file handle of the Expr
 
 -- | Indents an Expr
 indent :: Expr -> Expr
 indent (Cmd t) = Cmd $ "\t" <> t
 indent (Comment t) = Comment $ "\t" <> t
-indent (HereDocBody t) = HereDocBody t -- cannot indent
 indent (Subshell i l) = Subshell ("\t" <> i) (map indent l)
 indent (Pipe e1 e2) = Pipe (indent e1) (indent e2)
+indent (Redir e r) = Redir (indent e) r
 indent (And e1 e2) = And (indent e1) (indent e2)
 indent (Or e1 e2) = Or (indent e1) (indent e2)
+
+-- | Specifies a redirection.
+data RedirSpec
+	= RedirToFile Fd FilePath -- ^ redirect the fd to a file
+	| RedirToFileAppend Fd FilePath -- ^ append to file
+	| RedirFromFile Fd FilePath -- ^ use a file as input
+	| RedirOutput Fd Fd -- ^ redirect first fd to the second
+	| RedirInput Fd Fd -- ^ same, but for input fd
+	| RedirHereDoc L.Text -- ^ use a here document as input
 
 -- | Shell script monad.
 newtype Script a = Script (Env -> ([Expr], Env, a))
@@ -164,22 +182,70 @@ script = flip mappend "\n" . L.intercalate "\n" .
 	("#!/bin/sh":) . map (fmt True) . gen
   where
 
+-- | Formats an Expr to shell  script.
+--
+-- Can generate either multiline or single line shell script.
 fmt :: Bool -> Expr -> L.Text
-fmt _ (Cmd t) = t
-fmt multiline (Comment t)
-	| multiline = "# " <> L.filter (/= '\n') t
-	-- Use : as a no-op command, and pass the comment to it.
-	| otherwise = ": " <> getQ (quote (L.filter (/= '\n') t))
-fmt multiline (HereDocBody t)
-	| multiline = t
-	-- No way to express a here-doc in a single line.
-	| otherwise = ""
-fmt multiline (Subshell i l) =
-	let (wrap, sep) = if multiline then ("\n", "\n") else ("", ";")
-	in i <> "(" <> wrap <> L.intercalate sep (map (fmt multiline . indent) l) <> wrap <> i <> ")"
-fmt multiline (Pipe e1 e2) = fmt multiline e1 <> " | " <> fmt multiline e2
-fmt multiline (And e1 e2) = fmt multiline e1 <> " && " <> fmt multiline e2
-fmt multiline (Or e1 e2) = fmt multiline e1 <> " || " <> fmt multiline e2
+fmt multiline = go
+  where
+	go (Cmd t) = t
+	go (Comment t)
+		| multiline = "# " <> L.filter (/= '\n') t
+		-- Comments go to end of line, so instead
+		-- use : as a no-op command, and pass the comment to it.
+		| otherwise = ": " <> getQ (quote (L.filter (/= '\n') t))
+	go (Subshell i l) =
+		let (wrap, sep) = if multiline then ("\n", "\n") else ("", ";")
+		in i <> "(" <> wrap <> L.intercalate sep (map (go . indent) l) <> wrap <> i <> ")"
+	go (Pipe e1 e2) = go e1 <> " | " <> go e2
+	go (And e1 e2) = go e1 <> " && " <> go e2
+	go (Or e1 e2) = go e1 <> " || " <> go e2
+	go (Redir e r) = let use = (\t -> go e <> " " <> t) in case r of
+		(RedirToFile fd f) ->
+			use $ redirFd fd (Just stdOutput) <> "> " <> L.pack f
+		(RedirToFileAppend fd f) ->
+			use $ redirFd fd (Just stdOutput) <> ">> " <> L.pack f
+		(RedirFromFile fd f) ->
+			use $ redirFd fd (Just stdInput) <> "< " <> L.pack f
+		(RedirOutput fd1 fd2) ->
+			use $ redirFd fd1 (Just stdOutput) <> ">&" <> showFd fd2
+		(RedirInput fd1 fd2) ->
+			use $ redirFd fd1 (Just stdInput) <> "<&" <> showFd fd2
+		(RedirHereDoc t)
+			| multiline -> 
+				let marker = eofMarker t
+				in use $ "<<" <> marker <> "\n" <> t <> "\n" <> marker
+			-- Here documents cannot be represented in a single
+			-- line script. Instead, generate:
+			-- (echo l1; echo l2; ...) | cmd
+			| otherwise ->
+				let heredoc = Subshell L.empty $
+					flip map (L.lines t) $ \l -> Cmd $ 
+						"echo " <> getQ (quote l)
+				in go (Pipe heredoc e)
+
+-- | Displays a Fd for use in a redirection.
+-- 
+-- Redirections have a default Fd; for example, ">" defaults to redirecting
+-- stdout. In this case, the file descriptor number does not need to be
+-- included.
+redirFd :: Fd -> (Maybe Fd) -> L.Text
+redirFd fd deffd
+	| Just fd == deffd = ""
+	| otherwise = showFd fd
+
+showFd :: Fd -> L.Text
+showFd = L.pack . show
+
+-- | Finds an approriate marker to end a here document; the marker cannot
+-- appear inside the text.
+eofMarker :: L.Text -> L.Text
+eofMarker t = go (1 :: Integer)
+  where
+	go n = let marker = "EOF" <> if n == 1 then "" else L.pack (show n)
+		in if marker `L.isInfixOf` t
+			then go (succ n)
+			else marker
 
 -- | Generates a single line of shell code.
 linearScript :: Script f -> L.Text
@@ -405,27 +471,6 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 
 	callfunc (Func f) = cmd f
 
--- | Pipes together two Scripts.
-(-|-) :: Script () -> Script () -> Script ()
-(-|-) = combine Pipe
-
--- | ANDs two Scripts.
-(-&&-) :: Script () -> Script () -> Script ()
-(-&&-) = combine And
-
--- | ORs two Scripts.
-(-||-) :: Script () -> Script () -> Script ()
-(-||-) = combine Or
-
-combine :: (Expr -> Expr -> Expr) -> Script () -> Script () -> Script ()
-combine f a b = do
-	alines <- runM a
-	blines <- runM b
-	add $ f (toExp alines) (toExp blines)
-  where
-	toExp [e] = e
-	toExp l = Subshell L.empty l
-
 -- | Runs the command, and separates its output into parts
 -- (using the IFS)
 --
@@ -507,7 +552,6 @@ ignoreFailure s = runM s >>= mapM_ (add . go)
   where
 	go c@(Cmd _) = Or c true
 	go c@(Comment _) = c
-	go c@(HereDocBody _) = c
 	go (Subshell i l) = Subshell i (map go l)
 	-- Assumes pipefail is not set.
 	go (Pipe e1 e2) = Pipe e1 (go e2)
@@ -515,5 +559,86 @@ ignoreFailure s = runM s >>= mapM_ (add . go)
 	-- there is no need for extra parens.
 	go c@(And _ _) = Or c true
 	go (Or e1 e2) = Or e1 (go e2)
+	go (Redir e r) = Redir (go e) r
 
 	true = Cmd "true"
+
+-- | Pipes together two Scripts.
+(-|-) :: Script () -> Script () -> Script ()
+(-|-) = combine Pipe
+
+-- | ANDs two Scripts.
+(-&&-) :: Script () -> Script () -> Script ()
+(-&&-) = combine And
+
+-- | ORs two Scripts.
+(-||-) :: Script () -> Script () -> Script ()
+(-||-) = combine Or
+
+combine :: (Expr -> Expr -> Expr) -> Script () -> Script () -> Script ()
+combine f a b = do
+	alines <- runM a
+	blines <- runM b
+	add $ f (toSingleExp alines) (toSingleExp blines)
+
+toSingleExp :: [Expr] -> Expr
+toSingleExp [e] = e
+toSingleExp l = Subshell L.empty l
+
+redir :: Script () -> RedirSpec -> Script ()
+redir s r = do
+	e <- toSingleExp <$> runM s
+	add $ Redir e r
+
+-- | Any function that takes a RedirFile can be passed a
+-- a FilePath, in which case the default file descriptor will be redirected
+-- to/from the FilePath.
+--
+-- Or, it can be passed a tuple of (Fd, FilePath), in which case the
+-- specified Fd will be redirected to/from the FilePath.
+class RedirFile r where
+	fromRedirFile :: Fd -> r -> (Fd, FilePath)
+
+instance RedirFile FilePath where
+	fromRedirFile = (,)
+
+instance RedirFile (Fd, FilePath) where
+	fromRedirFile = const id
+
+fileRedir :: RedirFile f => f -> Fd -> (Fd -> FilePath -> RedirSpec) -> RedirSpec
+fileRedir f deffd c = uncurry c (fromRedirFile deffd f)
+
+-- | Redirects to a file, overwriting any existing file.
+--
+-- For example, to shut up a noisy command:
+--
+-- > cmd "find" "/" |> "/dev/null"
+(|>) :: RedirFile f => Script () -> f -> Script ()
+s |> f = redir s (fileRedir f stdOutput RedirToFile)
+
+-- | Appends to a file. (If file doesn't exist, it will be created.)
+(|>>) :: RedirFile f => Script () -> f -> Script ()
+s |>> f = redir s (fileRedir f stdOutput RedirToFileAppend)
+
+-- | Redirects standard input from a file.
+(|<) :: RedirFile f => Script () -> f -> Script ()
+s |< f = redir s (fileRedir f stdInput RedirFromFile)
+
+-- | Redirects the first file descriptor to output to the second.
+--
+-- For example, '(cmd "foo", stdOutput) |>& stdError' will
+-- redirect a command's stdout to stderr.
+(|>&) :: (Script (), Fd) -> Fd -> Script ()
+(s, fd1) |>& fd2 = redir s (RedirOutput fd1 fd2)
+
+-- | Redirects a script's output to stderr.
+toStderr :: Script () -> Script ()
+toStderr s = (s, stdOutput) |>& stdError
+
+-- | Redirects the first file descriptor to input from the second.
+(|<&) :: (Script (), Fd) -> Fd -> Script ()
+(s, fd1) |<& fd2 = redir s (RedirInput fd1 fd2)
+
+-- | Provides the Text as input to the Script, using a here-document.
+hereDocument :: Script () -> L.Text -> Script ()
+hereDocument s t = redir s (RedirHereDoc t)

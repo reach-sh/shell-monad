@@ -4,6 +4,7 @@ shell-monad (0.2.1) UNRELEASED; urgency=medium
   * Fixed propigation of the outer monad's state into Output,
     which fixes a bug in the unusual case where variables or funtions
     are defined inside Output.
+  * Support redirection, including redirection from here-documents.
 
  -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 00:27:02 -0400
 
