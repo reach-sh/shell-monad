@@ -89,7 +89,7 @@ newtype Quoted a = Q { getQ :: a }
 -- like csh.
 quote :: L.Text -> Quoted L.Text
 quote t
-	| L.all (isAlphaNum) t = Q t
+	| L.all (\c -> isAlphaNum c || c == '_') t = Q t
 	| otherwise = Q $ q <> L.intercalate "'\"'\"'" (L.splitOn q t) <> q
   where
 	q = "'"
@@ -396,7 +396,7 @@ instance NameHinted NamedLike where
 instance NameHinted (Maybe L.Text) where
 	hinted = id
 
--- | Defines a new shell variable.
+-- | Defines a new shell variable, which starts out not being set.
 --
 -- Each call to newVar will generate a new, unique variable name.
 --
