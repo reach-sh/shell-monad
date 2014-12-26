@@ -141,20 +141,20 @@ modifyEnvVars env f = env { envVars = f (envVars env) }
 modifyEnvFuncs :: Env -> (S.Set Func -> S.Set Func) -> Env
 modifyEnvFuncs env f = env { envFuncs = f (envFuncs env) }
 
--- | Evaluate the monad and generates a list of Expr
+-- | runScriptuate the monad and generates a list of Expr
 gen :: Script f -> [Expr]
-gen = fst . eval mempty
+gen = fst . runScript mempty
 
--- | Evaluates the monad, and returns a list of Expr and the modified
+-- | Runs  the monad, and returns a list of Expr and the modified
 -- environment.
-eval :: Env -> Script f -> ([Expr], Env)
-eval env (Script f) = (code, env') where (code, env', _) = f env
+runScript :: Env -> Script f -> ([Expr], Env)
+runScript env (Script f) = (code, env') where (code, env', _) = f env
 
 -- | Runs the passed Script, using the current environment,
 -- and returns the list of Expr it generates.
 runM :: Script () -> Script [Expr]
 runM s = Script $ \env -> 
-	let (r, env') = eval env s
+	let (r, env') = runScript env s
 	in ([], env', r)
 
 -- | Generates a shell script, including hashbang,
@@ -215,11 +215,11 @@ cmd :: (ShellCmd params) => L.Text -> params
 cmd c = cmdAll c []
 
 class CmdArg a where
-	toTextArg :: a -> L.Text
+	toTextArg :: a -> (Env -> L.Text)
 
 -- | Text arguments are automatically quoted.
 instance CmdArg L.Text where
-	toTextArg = getQ . quote
+	toTextArg = const . getQ . quote
 
 -- | String arguments are automatically quoted.
 instance CmdArg String where
@@ -228,29 +228,33 @@ instance CmdArg String where
 -- | Any value that can be shown can be passed to 'cmd'; just wrap it
 -- inside a Val.
 instance (Show v) => CmdArg (Val v) where
-	toTextArg (Val v) = L.pack (show v)
+	toTextArg (Val v) = const $ L.pack (show v)
 
 -- | Var arguments cause the (quoted) value of a shell variable to be
 -- passed to the command.
 instance CmdArg Var where
-	toTextArg v = toTextArg (val v)
+	toTextArg = toTextArg . val
 
 -- | Quoted Text arguments are passed as-is.
 instance CmdArg (Quoted L.Text) where
-	toTextArg (Q v) = v
+	toTextArg (Q v) = const v
 
 -- | Allows passing the output of a command as a parameter.
 instance CmdArg Output where
-	toTextArg (Output s) = "\"$(" <> linearScript s <> ")\""
+	toTextArg (Output s) = \env ->
+		let t = toLinearScript $ fst $ runScript env s
+		in "\"$(" <> t <> ")\""
 
 class ShellCmd t where
-	cmdAll :: L.Text -> [L.Text] -> t
+	cmdAll :: L.Text -> [Env -> L.Text] -> t
 
 instance (CmdArg arg, ShellCmd result) => ShellCmd (arg -> result) where
 	cmdAll c acc x = cmdAll c (toTextArg x : acc)
 
 instance (f ~ ()) => ShellCmd (Script f) where
-	cmdAll c acc = add $ Cmd $ L.intercalate " " (c:reverse acc)
+	cmdAll c acc = Script $ \env -> 
+		let ps = map (\f -> f env) (reverse acc)
+		in ([Cmd $ L.intercalate " " (c:ps)], env, ())
 
 -- | The output of a command, or even a more complicated Script
 -- can be passed as a parameter to 'cmd'
@@ -384,7 +388,7 @@ func
 func h s = flip hinted h $ \namehint -> Script $ \env ->
 	let f = go (genfuncname namehint) env (0 :: Integer)
 	    env' = modifyEnvFuncs env (S.insert f)
-	    (ls, env'') = eval env' s
+	    (ls, env'') = runScript env' s
 	in (definefunc f ls, env'', callfunc f)
   where
 	go basename env x
