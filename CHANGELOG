@@ -1,4 +1,4 @@
-shell-monad (0.2.1) UNRELEASED; urgency=medium
+shell-monad (0.2.1) unstable; urgency=medium
 
   * Simple support for globs.
   * Fixed propigation of the outer monad's state into Output,
@@ -10,7 +10,7 @@ shell-monad (0.2.1) UNRELEASED; urgency=medium
     the command to run to be specified using String, Var, or even
     Output.
 
- -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 00:27:02 -0400
+ -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 15:20:53 -0400
 
 shell-monad (0.2.0) unstable; urgency=medium
 
