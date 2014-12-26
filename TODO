@@ -1,0 +1,28 @@
+* redirection
+* globs
+* shell arithmetic
+* nicer interface for the `test` command (aka `[`)
+* ${var%foo} etc
+* here-documents
+
+* toLinearScript currently punts on a HereDocBody, representing it as ""
+  Would be better to make it type-safe, somehow. Hoever, using Maybe
+  seems like it would add too much complexity.
+
+* The instance CmdArg Output uses linearScript to run a Script,
+  which runs without seeing the Env from the monad where `cmd`
+  is being run.
+  
+  This means that, in theory, if the inner script defines
+  variables or functions, their names could conflict with
+  ones defined by the outer script. This is probably rare, but
+  it can be done.
+
+  Note that the $() runs in a subshell, so this won't stomp
+  on variables and functions defined in the outer script.
+
+  To fix, thread in the Env.. But how? `cmd` is curried;
+  monadic code cannot be run before it calls `cmdAll`.
+  Seems that `cmd` would need to be changed to be passed
+  an Env and return an Expr and then callers would need to use
+  "add $ cmd .."
