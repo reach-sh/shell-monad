@@ -227,7 +227,10 @@ fmt multiline = go
 		(RedirHereDoc t)
 			| multiline -> 
 				let marker = eofMarker t
-				in use $ "<<" <> marker <> "\n" <> t <> "\n" <> marker
+				in use $ "<<" <> marker <> "\n"
+					<> t 
+					<> "\n" 
+					<> marker
 			-- Here documents cannot be represented in a single
 			-- line script. Instead, generate:
 			-- (echo l1; echo l2; ...) | cmd
