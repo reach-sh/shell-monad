@@ -1,4 +1,4 @@
--- | A shell script monad
+-- | This is a shell monad, for generating shell scripts.
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -17,7 +17,8 @@ module Control.Monad.Shell (
 	glob,
 	run,
 	cmd,
-	CmdArg,
+	Param,
+	CmdParams,
 	Output(..),
 	Val(..),
 	comment,
@@ -40,12 +41,14 @@ module Control.Monad.Shell (
 	(-|-),
 	(-&&-),
 	(-||-),
+	RedirFile,
 	(|>),
 	(|>>),
 	(|<),
-	(|>&),
 	toStderr,
+	(|>&),
 	(|<&),
+	(->-),
 	hereDocument,
 ) where
 
@@ -258,9 +261,9 @@ toLinearScript = L.intercalate "; " . map (fmt False)
 run :: L.Text -> [L.Text] -> Script ()
 run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 
--- | Variadic argument version of 'run'.
+-- | Variadic and polymorphic version of 'run'
 --
--- The command can be passed any number of CmdArgs.
+-- A command can be passed any number of Params.
 --
 -- > demo = script $ do
 -- >   cmd "echo" "hello, world"
@@ -277,53 +280,55 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 -- > import qualified Data.Text.Lazy as L
 -- > default (L.Text)
 --
--- Note that the command to run is itself a CmdArg, so it can be a Text,
+-- Note that the command to run is itself a Param, so it can be a Text,
 -- or a String, or even a Var or Output. For example, this echos "hi":
 --
 -- > demo = script $ do
--- 	echovar <- newVarContaining "echo" ()
--- 	cmd echovar "hi"
-cmd :: (CmdArg command, ShellCmd params) => command -> params
-cmd c = cmdAll (toTextArg c) []
+-- >    echovar <- newVarContaining "echo" ()
+-- >    cmd echovar "hi"
+cmd :: (Param command, CmdParams params) => command -> params
+cmd c = cmdAll (toTextParam c) []
 
-class CmdArg a where
-	toTextArg :: a -> (Env -> L.Text)
+-- | A Param is anything that can be used as the parameter of a command.
+class Param a where
+	toTextParam :: a -> (Env -> L.Text)
 
 -- | Text arguments are automatically quoted.
-instance CmdArg L.Text where
-	toTextArg = const . getQ . quote
+instance Param L.Text where
+	toTextParam = const . getQ . quote
 
 -- | String arguments are automatically quoted.
-instance CmdArg String where
-	toTextArg = toTextArg . L.pack
+instance Param String where
+	toTextParam = toTextParam . L.pack
 
 -- | Any value that can be shown can be passed to 'cmd'; just wrap it
 -- inside a Val.
-instance (Show v) => CmdArg (Val v) where
-	toTextArg (Val v) = const $ L.pack (show v)
+instance (Show v) => Param (Val v) where
+	toTextParam (Val v) = const $ L.pack (show v)
 
 -- | Var arguments cause the (quoted) value of a shell variable to be
 -- passed to the command.
-instance CmdArg Var where
-	toTextArg = toTextArg . val
+instance Param Var where
+	toTextParam = toTextParam . val
 
 -- | Quoted Text arguments are passed as-is.
-instance CmdArg (Quoted L.Text) where
-	toTextArg (Q v) = const v
+instance Param (Quoted L.Text) where
+	toTextParam (Q v) = const v
 
 -- | Allows passing the output of a command as a parameter.
-instance CmdArg Output where
-	toTextArg (Output s) = \env ->
+instance Param Output where
+	toTextParam (Output s) = \env ->
 		let t = toLinearScript $ fst $ runScript env s
 		in "\"$(" <> t <> ")\""
 
-class ShellCmd t where
+-- | Allows a function to take any number of Params.
+class CmdParams t where
 	cmdAll :: (Env -> L.Text) -> [Env -> L.Text] -> t
 
-instance (CmdArg arg, ShellCmd result) => ShellCmd (arg -> result) where
-	cmdAll c acc x = cmdAll c (toTextArg x : acc)
+instance (Param arg, CmdParams result) => CmdParams (arg -> result) where
+	cmdAll c acc x = cmdAll c (toTextParam x : acc)
 
-instance (f ~ ()) => ShellCmd (Script f) where
+instance (f ~ ()) => CmdParams (Script f) where
 	cmdAll c acc = Script $ \env -> 
 		let ps = map (\f -> f env) (c : reverse acc)
 		in ([Cmd $ L.intercalate " " ps], env, ())
@@ -414,8 +419,8 @@ positionalParameters = Var "@"
 -- positionalParameters and returning a new Var that holds the value of the
 -- parameter.
 --
--- If there are no more positional parameters, an error will be thrown at
--- runtime.
+-- If there are no more positional parameters, the script will crash
+-- with an error.
 --
 -- For example:
 --
@@ -430,7 +435,7 @@ takeParameter = hinted $ \namehint -> do
 -- | Defines a shell function, and returns an action that can be run to
 -- call the function.
 --
--- The action is variadic; it can be passed any number of CmdArgs.
+-- The action is variadic; it can be passed any number of CmdParams.
 -- Typically, it will make sense to specify a more concrete type
 -- when defining the shell function.
 --
@@ -453,7 +458,7 @@ takeParameter = hinted $ \namehint -> do
 -- >    forCmd (cmd "seq" "1" num) $ \_n ->
 -- >       cmd "echo" "Ho, ho, ho!" "Merry xmas!"
 func
-	:: (NameHinted namehint, ShellCmd callfunc)
+	:: (NameHinted namehint, CmdParams callfunc)
 	=> namehint
 	-> Script ()
 	-> Script callfunc
@@ -630,20 +635,25 @@ s |>> f = redir s (fileRedir f stdOutput RedirToFileAppend)
 (|<) :: RedirFile f => Script () -> f -> Script ()
 s |< f = redir s (fileRedir f stdInput RedirFromFile)
 
--- | Redirects the first file descriptor to output to the second.
---
--- For example, '(cmd "foo", stdOutput) |>& stdError' will
--- redirect a command's stdout to stderr.
-(|>&) :: (Script (), Fd) -> Fd -> Script ()
-(s, fd1) |>& fd2 = redir s (RedirOutput fd1 fd2)
-
 -- | Redirects a script's output to stderr.
 toStderr :: Script () -> Script ()
-toStderr s = (s, stdOutput) |>& stdError
+toStderr s = s ->- stdOutput |>& stdError
+
+-- | Redirects the first file descriptor to output to the second.
+--
+-- For example, to redirect a command's stderr to stdout:
+--
+-- > cmd "foo" ->- stdError) |>& stdOutput
+(|>&) :: (Script (), Fd) -> Fd -> Script ()
+(s, fd1) |>& fd2 = redir s (RedirOutput fd1 fd2)
 
 -- | Redirects the first file descriptor to input from the second.
 (|<&) :: (Script (), Fd) -> Fd -> Script ()
 (s, fd1) |<& fd2 = redir s (RedirInput fd1 fd2)
+
+-- | Helper for '|>&' and '|<&'
+(->-) :: Script () -> Fd -> (Script (), Fd)
+(->-) = (,)
 
 -- | Provides the Text as input to the Script, using a here-document.
 hereDocument :: Script () -> L.Text -> Script ()
