@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 
 module Control.Monad.Shell (
 	-- * Core
@@ -64,6 +65,9 @@ module Control.Monad.Shell (
 	stopOnFailure,
 	ignoreFailure,
 	errUnlessVar,
+	-- * Tests
+	test,
+	Test(..),
 	-- * Shell Arithmetic Expressions
 	Arith(..),
 	-- * Misc
@@ -647,7 +651,7 @@ whileCmd c a = do
 	block "do" a
 	add $ Cmd "done"
 
--- | if with a monadic conditional
+-- | if with a Script conditional.
 --
 -- If the conditional exits 0, the first action is run, else the second.
 ifCmd :: Script () -> Script () -> Script () -> Script ()
@@ -834,6 +838,91 @@ toStderr s = s &stdOutput>&stdError
 -- | Provides the Text as input to the Script, using a here-document.
 hereDocument :: Script () -> L.Text -> Script ()
 hereDocument s t = redir s (RedirHereDoc t)
+
+-- | Creates a Script that checks a Test and exits true (0) or false (1).
+--
+-- Useful with ifCmd, whenCmd, etc; for example:
+--
+-- > ifCmd (test (FileExists "foo")) (foo, bar)
+test :: Test -> Script ()
+test t = Script $ \env -> ([Cmd $ "test " <> mkTest env t], env, ())
+
+mkTest :: Env -> Test -> L.Text
+mkTest env = go
+  where
+	go (TNot t) = unop "!" (go t)
+	go (TAnd t1 t2) = binop (go t1) "&&" (go t2)
+	go (TOr t1 t2) = binop (go t1) "||" (go t2)
+	go (TEmpty p) = unop "-z" (pv p)
+	go (TNonEmpty p) = unop "-n" (pv p)
+	go (TStrEqual p1 p2) = binop (pv p1) "=" (pv p2)
+	go (TStrNotEqual p1 p2) = binop (pv p1) "!=" (pv p2)
+	go (TEqual p1 p2) = binop (pv p1) "-eq" (pv p2)
+	go (TNotEqual p1 p2) = binop (pv p1) "-ne" (pv p2)
+	go (TGT p1 p2) = binop (pv p1) "-gt" (pv p2)
+	go (TLT p1 p2) = binop (pv p1) "-lt" (pv p2)
+	go (TGE p1 p2) = binop (pv p1) "-ge" (pv p2)
+	go (TLE p1 p2) = binop (pv p1) "-le" (pv p2)
+	go (TFileEqual p1 p2) = binop (pv p1) "-ef" (pv p2)
+	go (TFileNewer p1 p2) = binop (pv p1) "-nt" (pv p2)
+	go (TFileOlder p1 p2) = binop (pv p1) "-ot" (pv p2)
+	go (TBlockExists p) = unop "-b" (pv p)
+	go (TCharExists p) = unop "-c" (pv p)
+	go (TDirExists p) = unop "-d" (pv p)
+	go (TFileExists p) = unop "-e" (pv p)
+	go (TRegularFileExists p) = unop "-f" (pv p)
+	go (TSymlinkExists p) = unop "-L" (pv p)
+	go (TFileNonEmpty p) = unop "-s" (pv p)
+	go (TFileExecutable p) = unop "-x" (pv p)
+
+	paren t = "\\(" <> t <> "\\)"
+	
+	binop a o b = paren $ a <> " " <> o <> " " <> b
+	unop o v = paren $ o <> " " <> v
+
+	pv :: (Param p) => p -> L.Text
+	pv = flip toTextParam env
+
+-- | Note that this should only include things that test(1) and
+-- shell built-in test commands support portably.
+data Test where
+	TNot :: Test -> Test -- negation
+	TAnd :: Test -> Test -> Test -- 'and'
+	TOr :: Test -> Test -> Test -- 'or'
+	TEmpty :: (Param p) => p -> Test
+	-- Does the param expand to an empty string?
+	TNonEmpty :: (Param p) => p -> Test
+	TStrEqual :: (Param p, Param q) => p -> q -> Test
+	-- Do the parameters expand to the same string?
+	TStrNotEqual :: (Param p, Param q) => p -> q -> Test
+	TEqual :: (Integral p, Integral q) => Var p -> Var q -> Test
+	-- Are the Vars equal? (Compares integer to integer, not string-wise.)
+	TNotEqual :: (Integral p, Integral q) => Var p -> Var q -> Test 
+	TGT :: (Integral p, Integral q) => Var p -> Var q -> Test -- '>'
+	TLT :: (Integral p, Integral q) => Var p -> Var q -> Test -- '<'
+	TGE :: (Integral p, Integral q) => Var p -> Var q -> Test -- '>='
+	TLE :: (Integral p, Integral q) => Var p -> Var q -> Test -- '<='
+	TFileEqual :: (Param p, Param q) => p -> q -> Test
+	-- Are the files equal? (Compares the files' device and inode numbers).
+	TFileNewer :: (Param p, Param q) => p -> q -> Test
+	-- Does the first file have a newer modification date?
+	TFileOlder :: (Param p, Param q) => p -> q -> Test
+	TBlockExists :: (Param p) => p -> Test
+	-- Does the block device exist?
+	TCharExists :: (Param p) => p -> Test
+	-- Does the char device exist?
+	TDirExists :: (Param p) => p -> Test
+	-- Does the directory exist?
+	TFileExists :: (Param p) => p -> Test
+	-- Does the file exist?
+	TRegularFileExists :: (Param p) => p -> Test
+	-- Does the file exist and is it a regular file?
+	TSymlinkExists :: (Param p) => p -> Test
+	-- Does the symlink exist?
+	TFileNonEmpty :: (Param p) => p -> Test
+	-- Does the file exist and is not empty?
+	TFileExecutable :: (Param p) => p -> Test
+	-- Does the file exist and is executable?
 
 -- | This data type represents shell Arithmetic Expressions.
 --

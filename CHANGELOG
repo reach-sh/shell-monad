@@ -1,3 +1,11 @@
+shell-monad (0.5.1) UNRELEASED; urgency=medium
+
+  * Added a nice interface to the test command. Test is a GADT,
+    which allows constraining numeric tests to only accept
+    Intgral Vars.
+
+ -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 19:23:36 -0400
+
 shell-monad (0.5.0) unstable; urgency=medium
 
   * newVarContaining is generalized to work for all showable data types.

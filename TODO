@@ -1,6 +1,6 @@
-* nicer interface for the `test` command (aka `[`)
 * setVar allows `Var a` to be set to any value, the value
   is not constrained to be of type `a`. This seems necessary
   to allow, eg, `setVar v (Output (cmd "read"))`. On other
   hand, it's subptimal when using setVar with a Arith; in this
   case `a` should be some Integral.
+* Allow: test (n `TEqual` 42)
