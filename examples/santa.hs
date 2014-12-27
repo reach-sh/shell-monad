@@ -23,7 +23,7 @@ main = T.writeFile "santa.sh" $ script $ do
 mkHohoho :: Script (Val Int -> Script ())
 mkHohoho = func (NamedLike "hohoho") $ do
 	num <- takeParameter (NamedLike "num")
-	forCmd (cmd "seq" "1" num) $ \_n ->
+	forCmd (cmd "seq" (Val (1 :: Int)) num) $ \_n ->
 		cmd "echo" "Ho, ho, ho!" "Merry xmas!"
 
 pipeLess :: Script () -> Script ()
