@@ -1,3 +1,2 @@
 * shell arithmetic
 * nicer interface for the `test` command (aka `[`)
-* ${var%foo} etc
