@@ -3,7 +3,6 @@
 import Control.Monad.Shell
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.IO as T
-import Data.Monoid
 default (T.Text)
 
 main :: IO ()
@@ -19,4 +18,4 @@ fib n = do
 		setVar prev (AVar acc `AMinus` AVar prev)
 	return acc
   where
-	new1 = newVarContaining "1" () :: Script (Var Integer)
+	new1 = newVarContainingVal 1 ()
