@@ -1,4 +1,4 @@
-shell-monad (0.3.0) UNRELEASED; urgency=medium
+shell-monad (0.3.0) unstable; urgency=medium
 
   * Renamed a few operators.
   * Added defaultVar, whenVar, lengthVar, and trimVar.
@@ -8,7 +8,7 @@ shell-monad (0.3.0) UNRELEASED; urgency=medium
   * Added caseOf
   * Fix bug in stopOnFailure.
 
- -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 15:53:08 -0400
+ -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 22:58:56 -0400
 
 shell-monad (0.2.1) unstable; urgency=medium
 
