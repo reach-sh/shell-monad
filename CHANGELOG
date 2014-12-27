@@ -1,7 +1,6 @@
 shell-monad (0.5.0) UNRELEASED; urgency=medium
 
-  * Added newVarContainingVal, and made newVarContaining accept any
-    type that is a member of Quotable.
+  * newVarContaining is generalized to work for all showable data types.
 
  -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 13:09:40 -0400
 

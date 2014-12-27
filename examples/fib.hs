@@ -18,4 +18,4 @@ fib n = do
 		setVar prev (AVar acc `AMinus` AVar prev)
 	return acc
   where
-	new1 = newVarContainingVal 1 ()
+	new1 = newVarContaining 1 ()

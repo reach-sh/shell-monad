@@ -4,8 +4,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Control.Monad.Shell (
 	-- * Core
@@ -13,6 +13,7 @@ module Control.Monad.Shell (
 	script,
 	linearScript,
 	Var,
+	Val(..),
 	Quoted,
 	Quotable(..),
 	glob,
@@ -22,13 +23,11 @@ module Control.Monad.Shell (
 	Param,
 	CmdParams,
 	Output(..),
-	Val(..),
 	-- * Shell variables
 	NamedLike(..),
 	NameHinted,
 	newVar,
 	newVarContaining,
-	newVarContainingVal,
 	setVar,
 	globalVar,
 	positionalParameters,
@@ -80,6 +79,8 @@ import Data.Char
 import System.Posix.Types (Fd)
 import System.Posix.IO (stdInput, stdOutput, stdError)
 
+import Control.Monad.Shell.Quote
+
 -- | A shell variable, with an associated phantom type.
 newtype Var a = Var UntypedVar
 
@@ -102,35 +103,6 @@ simpleVar name = Var $ V
 	-- types of variable expansion.
 	, expandVar = \_ (VarName n) -> Q ("$" <> n)
 	}
-
--- | A value that is safely quoted.
-newtype Quoted a = Q { getQ :: a }
-	deriving (Eq, Ord, Show, Monoid)
-
--- | Quotes a value to allow it to be safely exposed to the shell.
---
--- The method used is to replace ' with '"'"' and wrap the value inside
--- single quotes. This works for POSIX shells, as well as other shells
--- like csh.
-class Quotable t where
-	quote :: t -> Quoted L.Text
-
-instance Quotable L.Text where
-	quote t
-		| L.all (\c -> isAlphaNum c || c == '_') t = Q t
-		| otherwise = Q $ q <> L.intercalate "'\"'\"'" (L.splitOn q t) <> q
-	  where
-		q = "'"
-
-instance Quotable String where
-	quote = quote . L.pack
-
--- | Any Showable value can be quoted, just use 'quote (Val v)'
-instance (Show v) => Quotable (Val v) where
-	quote (Val v) = quote $ show v
-
--- | An arbitrary value.
-newtype Val v = Val v
 
 -- | Treats the Text as a glob, which expands to one parameter per
 -- matching file.
@@ -355,7 +327,7 @@ instance Param String where
 -- | Any value that can be shown can be passed to 'cmd'; just wrap it
 -- inside a Val.
 instance (Show v) => Param (Val v) where
-	toTextParam (Val v) = const $ L.pack (show v)
+       toTextParam (Val v) = const $ L.pack (show v)
 
 instance Param UntypedVar where
 	toTextParam v = \env -> "\"" <> getQ (expandVar v env (varName v)) <> "\""
@@ -452,24 +424,19 @@ instance NameHinted (Maybe L.Text) where
 newVar :: (NameHinted namehint) => forall a. namehint -> Script (Var a)
 newVar = newVarContaining' ""
 
--- | Creates a new shell variable, with an initial value which can be
--- anything that is a member of 'Quotable'.
-newVarContaining :: (NameHinted namehint, Quotable t) => t -> namehint -> Script (Var t)
-newVarContaining = newVarContaining' . getQ . quote
-
--- | Createa a new shell variable, with an initial value which can
--- be anything that can be shown.
---
--- Avoid using this with Text or String, as that will result in doubled
--- quotes. Instead, use 'newVarContaining' for those data types.
-newVarContainingVal :: (NameHinted namehint, Show t) => t -> namehint -> Script (Var t)
-newVarContainingVal = newVarContaining' . getQ . quote . Val
-
 newVarContaining' :: (NameHinted namehint) => L.Text -> namehint -> Script (Var t)
 newVarContaining' value = hinted $ \namehint -> do
 	v@(Var (V { varName = VarName name }))
 		<- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (name <> "=" <> value)], env, v)
+
+-- | Createa a new shell variable, with an initial value which can
+-- be anything that can be shown.
+--
+-- > s <- newVarContaining "foo bar baz" (NamedLike "s")
+-- > i <- newVarContaining (1 :: Int) (NamedLine "i")
+newVarContaining :: (NameHinted namehint, Quotable (Val t)) => t -> namehint -> Script (Var t)
+newVarContaining = newVarContaining' . getQ . quote . Val
 
 -- | Sets the Var to the value of the param. 
 setVar :: Param param => forall a. Var a -> param -> Script ()
