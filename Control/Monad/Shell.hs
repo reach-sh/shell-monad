@@ -681,14 +681,14 @@ caseOf v l = go True l
 	-- > case "$foo" in ook) : 
 	-- >     echo got ook
 	-- >     echo yay
-	-- > ;; *) :
+	-- > : ;; *) :
 	-- >     echo default
-	-- > ;; esac
+	-- > : ;; esac
 	go _ [] = add $ Cmd $ ";; esac"
 	go atstart ((t, s):rest) = do
 		let leader = if atstart
 			then "case " <> toTextParam v undefined <> " in "
-			else ";; "
+			else ": ;; "
 		add $ Cmd $ leader <> getQ t <> ") :"
 		mapM_ (add . indent) =<< runM s
 		go False rest

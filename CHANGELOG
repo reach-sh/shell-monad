@@ -1,3 +1,9 @@
+shell-monad (0.3.1) UNRELEASED; urgency=medium
+
+  * Fixed linear rendering of caseOf
+
+ -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 23:47:04 -0400
+
 shell-monad (0.3.0) unstable; urgency=medium
 
   * Renamed a few operators.
