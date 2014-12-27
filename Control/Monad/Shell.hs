@@ -737,7 +737,7 @@ readVar (Var (V { varName = VarName varname })) = add $
 -- nonzero. Use "stopOnFailure True" to make the script stop on the first
 -- such command.
 stopOnFailure :: Bool -> Script ()
-stopOnFailure b = add $ Cmd $ "set " <> (if b then "-" else "+") <> "x"
+stopOnFailure b = add $ Cmd $ "set " <> (if b then "-" else "+") <> "e"
 
 -- | Makes a nonzero exit status be ignored.
 ignoreFailure :: Script () -> Script ()
