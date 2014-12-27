@@ -6,6 +6,7 @@ shell-monad (0.3.0) UNRELEASED; urgency=medium
     has been removed, and WithVar should be used instead.
   * newVar now ensures that the variable starts out empty.
   * Added caseOf
+  * Fix bug in stopOnFailure.
 
  -- Joey Hess <id@joeyh.name>  Fri, 26 Dec 2014 15:53:08 -0400
 
