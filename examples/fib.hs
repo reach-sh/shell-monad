@@ -10,7 +10,7 @@ main :: IO ()
 main = T.writeFile "fib.sh" $ script $
 	takeParameter () >>= fib >>= cmd "echo"
 
-fib :: Var -> Script Var
+fib :: Var Integer -> Script (Var Integer)
 fib n = do
 	prev <- new1
 	acc <- new1
@@ -19,4 +19,4 @@ fib n = do
 		setVar prev (AVar acc `AMinus` AVar prev)
 	return acc
   where
-	new1 = newVarContaining "1" ()
+	new1 = newVarContaining "1" () :: Script (Var Integer)

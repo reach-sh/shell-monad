@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ExtendedDefaultRules, MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings, ExtendedDefaultRules, MultiParamTypeClasses, FlexibleInstances, RankNTypes #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 import Control.Monad.Shell
 import qualified Data.Text.Lazy as T
@@ -27,7 +27,7 @@ class Monad t => InputsProto t p where
 instance InputsProto IO Proto where
 	input = toProto <$> readLn
 
-instance InputsProto Script Var where
+instance InputsProto Script (Var String) where
 	input = do
 		v <- newVar ()
 		readVar v
@@ -66,7 +66,7 @@ toProto s = case break (== ' ') s of
 		| otherwise -> error $ "unknown protocol command: " ++ w
 	(_, _) -> error "protocol splitting error"
 
-handleProto :: Var -> Script ()
+handleProto :: Var String -> Script ()
 handleProto v = do
 	w <- getProtoCommand v
 	caseOf w
@@ -79,20 +79,20 @@ handleProto v = do
 		  )
 		]
 
-handleFoo :: Var -> Script ()
+handleFoo :: Var String -> Script ()
 handleFoo v = toStderr $ cmd "echo" "yay, I got a Foo" v
 
 handleBar :: Script ()
 handleBar = toStderr $ cmd "echo" "yay, I got a Bar"
 
-handleBaz :: Var -> Script ()
+handleBaz :: Var Int -> Script ()
 handleBaz num = forCmd (cmd "seq" (Val (1 :: Int)) num) $
 	toStderr . cmd "echo" "yay, I got a Baz"
 
-getProtoCommand :: Var -> Script Var
+getProtoCommand :: Var String -> Script (Var String)
 getProtoCommand v = trimVar LongestMatch FromEnd v (glob " *")
 
-getProtoRest :: Var -> Script Var
+getProtoRest :: forall t. Var String -> Script (Var t)
 getProtoRest v = trimVar ShortestMatch FromBeginning v (glob "[! ]*[ ]")
 
 main :: IO ()
