@@ -63,6 +63,8 @@ module Control.Monad.Shell (
 	stopOnFailure,
 	ignoreFailure,
 	errUnlessVar,
+	-- * Shell Arithmetic Expressions
+	Arith(..),
 	-- * Misc
 	comment,
 	readVar,
@@ -90,7 +92,7 @@ simpleVar name = Var
 	{ varName = name
 	-- Used to expand the variable; can be overridden for other
 	-- types of variable expansion.
-	, expandVar = \_ (VarName n) -> Q ("\"$" <> n <> "\"")
+	, expandVar = \_ (VarName n) -> Q ("$" <> n)
 	}
 
 -- | A value that is safely quoted.
@@ -337,7 +339,7 @@ instance (Show v) => Param (Val v) where
 -- | Var arguments cause the (quoted) value of a shell variable to be
 -- passed to the command.
 instance Param Var where
-	toTextParam v = \env -> getQ $ expandVar v env (varName v)
+	toTextParam v = \env -> "\"" <> getQ (expandVar v env (varName v)) <> "\""
 
 -- | Allows modifying the value of a shell variable before it is passed to
 -- the command.
@@ -353,6 +355,12 @@ instance Param Output where
 	toTextParam (Output s) = \env ->
 		let t = toLinearScript $ fst $ runScript env s
 		in "\"$(" <> t <> ")\""
+
+-- | Allows passing an Arithmetic Expression as a parameter.
+instance Param Arith where
+	toTextParam a = \env -> 
+		let t = fmtArith env a
+		in "\"$((" <> t <> "))\""
 
 -- | Allows a function to take any number of Params.
 class CmdParams t where
@@ -492,7 +500,7 @@ modVar :: Var -> (L.Text -> Env -> L.Text) -> Script Var
 modVar (Var { varName = VarName varname }) p = do
 	v <- newVarUnsafe (NamedLike varname)
 	return $ v
-		{ expandVar = \env _ -> Q $ "\"${" <> p varname env <> "}\""
+		{ expandVar = \env _ -> Q $ "${" <> p varname env <> "}"
 		}
 
 modVar' :: (Param param) => L.Text -> Var -> param -> Script Var
@@ -819,3 +827,66 @@ toStderr s = s &stdOutput>&stdError
 -- | Provides the Text as input to the Script, using a here-document.
 hereDocument :: Script () -> L.Text -> Script ()
 hereDocument s t = redir s (RedirHereDoc t)
+
+-- | This data type represents shell Arithmetic Expressions.
+--
+-- Note that in shell arithmetic, expressions that would evaluate to a
+-- Bool, such as ANot and AEqual instead evaluate to 1 for True and 0 for
+-- False.
+data Arith
+	= ANum Integer
+	| AVar Var
+	| ANegate Arith -- ^ negation
+	| APlus Arith Arith -- ^ '+'
+	| AMinus Arith Arith -- ^ '-'
+	| AMult Arith Arith -- ^ '*'
+	| ADiv Arith Arith -- ^ '/'
+	| AMod Arith Arith -- ^ 'mod'
+	| ANot Arith -- ^ 'not'
+	| AOr Arith Arith -- ^ 'or'
+	| AAnd Arith Arith -- ^ 'and'
+	| AEqual Arith Arith -- ^ '=='
+	| ANotEqual Arith Arith -- ^ '/='
+	| ALT Arith Arith -- ^ '<'
+	| AGT Arith Arith -- ^ '>'
+	| ALE Arith Arith -- ^ '<='
+	| AGE Arith Arith -- ^ '>='
+	| ABitOr Arith Arith -- ^ OR of the bits of the two arguments
+	| ABitXOr Arith Arith -- ^ XOR of the bits of the two arguments
+	| ABitAnd Arith Arith -- ^ AND of the bits of the two arguments
+	| AShiftLeft Arith Arith -- ^ shift left (first argument's bits are shifted by the value of the second argument)
+	| AShiftRight Arith Arith -- ^ shift right
+	| ACond Arith Arith Arith -- ^ if the first argument is non-zero, the result is the second, else the result is the third
+
+fmtArith :: Env -> Arith -> L.Text
+fmtArith env = go
+  where
+	go (ANum i) = L.pack (show i)
+	-- shell variable must be expanded without quotes
+	go (AVar v) = getQ $ expandVar v env (varName v)
+	go (ANegate v) = unop "-" v
+	go (APlus a b) = binop a "+" b
+	go (AMinus a b) = binop a "-" b
+	go (AMult a b) = binop a "*" b
+	go (ADiv a b) = binop a "/" b
+	go (AMod a b) = binop a "%" b
+	go (ANot v) = unop "!" v
+	go (AOr a b) = binop a "||" b
+	go (AAnd a b) = binop a "&&" b
+	go (AEqual a b) = binop a "==" b
+	go (ANotEqual a b) = binop a "!=" b
+	go (ALT a b) = binop a "<" b
+	go (AGT a b) = binop a ">" b
+	go (ALE a b) = binop a "<=" b
+	go (AGE a b) = binop a ">=" b
+	go (ABitOr a b) = binop a "|" b
+	go (ABitXOr a b) = binop a "^" b
+	go (ABitAnd a b) = binop a "&" b
+	go (AShiftLeft a b) = binop a "<<" b
+	go (AShiftRight a b) = binop a ">>" b
+	go (ACond c a b) = paren $ go c <> " ? " <> go a <> " : " <> go b
+
+	paren t = "(" <> t <> ")"
+
+	binop a o b = paren $ go a <> " " <> o <> " " <> go b
+	unop o v = paren $ o <> " " <> go v
