@@ -535,7 +535,7 @@ errUnlessVar = modVar' ":?"
 --
 -- Note that 'lengthVar positionalParameters' expands to the number
 -- of positional parameters.
-lengthVar :: forall a. Var a -> Script (Var Int)
+lengthVar :: forall a. Var a -> Script (Var Integer)
 -- Implementation note: ${#${foo:-bar}} is not legal shell code.
 -- So, to allow taking the length of Vars that expand to such things,
 -- a temporary Var is created, assigned to the expansion of the input Var.
