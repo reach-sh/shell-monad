@@ -7,6 +7,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Control.Monad.Shell (
+	-- * Core
 	Script,
 	script,
 	linearScript,
@@ -14,34 +15,41 @@ module Control.Monad.Shell (
 	Quoted,
 	quote,
 	glob,
+	-- * Running commands
 	run,
 	cmd,
 	Param,
 	CmdParams,
 	Output(..),
 	Val(..),
-	WithVar(..),
-	comment,
+	-- * Shell variables
 	NamedLike(..),
 	NameHinted,
 	newVar,
 	newVarContaining,
-	defaultVar,
+	setVar,
 	globalVar,
 	positionalParameters,
 	takeParameter,
+	defaultVar,
+	whenVar,
+	lengthVar,
+	trimVar,
+	Greediness(..),
+	Direction(..),
+	WithVar(..),
+	-- * Monadic combinators
 	func,
 	forCmd,
 	whileCmd,
 	ifCmd,
 	whenCmd,
 	unlessCmd,
-	readVar,
-	stopOnFailure,
-	ignoreFailure,
+	caseOf,
 	(-|-),
 	(-&&-),
 	(-||-),
+	-- * Redirection
 	RedirFile,
 	(|>),
 	(|>>),
@@ -51,6 +59,13 @@ module Control.Monad.Shell (
 	(<&),
 	(&),
 	hereDocument,
+	-- * Error handling
+	stopOnFailure,
+	ignoreFailure,
+	errUnlessVar,
+	-- * Misc
+	comment,
+	readVar,
 ) where
 
 import qualified Data.Text.Lazy as L
@@ -414,36 +429,10 @@ newVarContaining value = hinted $ \namehint -> do
 	v@(Var { varName = VarName name }) <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (name <> "=" <> getQ (quote value))], env, v)
 
--- | Creates a new shell variable, but does not ensure that it's not
--- already set to something. For use when the caller is going to generate
--- some shell script that is guaranteed to clobber any existing value of
--- the variable.
-newVarUnsafe :: (NameHinted namehint) => namehint -> Script Var
-newVarUnsafe = hinted $ \namehint -> Script $ \env ->
-	let v = go namehint env (0 :: Integer)
-	in ([], modifyEnvVars env (S.insert (varName v)), v)
-  where
-	go namehint env x
-		| S.member (varName v) (envVars env) =
-			go namehint env (succ x)
-		| otherwise = v
-	  where
-		v = simpleVar $ VarName $ "_"
-			<> genvarname namehint
-			<> if x == 0 then "" else L.pack (show (x + 1))
-	
-	genvarname = maybe "v" (L.filter isAlpha)
-
--- | Generates a new Var. Expanding this Var will yield the same
--- result as expanding the input Var, unless that is "", in which case
--- it instead defaults to the expansion of the param.
-defaultVar :: (Param param) => Var -> param -> Script Var
-defaultVar (Var { varName = VarName varname }) p = do
-	v <- newVarUnsafe (NamedLike varname)
-	return $ v
-		{ expandVar = \env _ -> Q $
-			"\"${" <> varname <> ":-" <> toTextParam p env <> "}\""
-		}
+-- | Sets the Var to the value of the param. 
+setVar :: Param param => Var -> param -> Script ()
+setVar (Var { varName = VarName name }) p = Script $ \env -> 
+	([Cmd (name <> "=" <> toTextParam p env)], env, ())
 
 -- | Gets a Var that refers to a global variable, such as PATH
 globalVar :: L.Text -> Script Var
@@ -477,6 +466,101 @@ takeParameter :: (NameHinted namehint) => namehint -> Script Var
 takeParameter = hinted $ \namehint -> do
 	p@(Var { varName = VarName name}) <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (name <> "=\"$1\""), Cmd "shift"], env, p)
+
+
+-- | Creates a new shell variable, but does not ensure that it's not
+-- already set to something. For use when the caller is going to generate
+-- some shell script that is guaranteed to clobber any existing value of
+-- the variable.
+newVarUnsafe :: (NameHinted namehint) => namehint -> Script Var
+newVarUnsafe = hinted $ \namehint -> Script $ \env ->
+	let v = go namehint env (0 :: Integer)
+	in ([], modifyEnvVars env (S.insert (varName v)), v)
+  where
+	go namehint env x
+		| S.member (varName v) (envVars env) =
+			go namehint env (succ x)
+		| otherwise = v
+	  where
+		v = simpleVar $ VarName $ "_"
+			<> genvarname namehint
+			<> if x == 0 then "" else L.pack (show (x + 1))
+	
+	genvarname = maybe "v" (L.filter isAlpha)
+
+modVar :: Var -> (L.Text -> Env -> L.Text) -> Script Var
+modVar (Var { varName = VarName varname }) p = do
+	v <- newVarUnsafe (NamedLike varname)
+	return $ v
+		{ expandVar = \env _ -> Q $ "\"${" <> p varname env <> "}\""
+		}
+
+modVar' :: (Param param) => L.Text -> Var -> param -> Script Var
+modVar' t v p = modVar v $ \varname env ->
+	varname <> t <> toTextParam p env
+
+-- | Generates a new Var. Expanding this Var will yield the same
+-- result as expanding the input Var, unless it is empty, in which case
+-- it instead defaults to the expansion of the param.
+defaultVar :: (Param param) => Var -> param -> Script Var
+defaultVar = modVar' ":-"
+
+-- | Generates a new Var. If the input Var is empty, then this new Var
+-- will likewise expand to the empty string. But if not, the new Var
+-- expands to the param.
+whenVar :: (Param param) => Var -> param -> Script Var
+whenVar = modVar' ":+"
+
+-- | Generates a new Var. If the input Var is empty then expanding this new
+-- Var will cause an error to be thrown, using the param as the error
+-- message. If the input Var is not empty, then the new Var expands to the
+-- same thing the input Var expands to.
+errUnlessVar :: (Param param) => Var -> param -> Script Var
+errUnlessVar = modVar' ":?"
+
+-- | Generates a new Var, which expands to the length of the
+-- expansion of the input Var.
+--
+-- Note that 'lengthVar positionalParameters' expands to the number
+-- of positional parameters.
+lengthVar :: Var -> Script Var
+-- Implementation note: ${#${foo:-bar}} is not legal shell code.
+-- So, to allow taking the length of Vars that expand to such things,
+-- a temporary Var is created, assigned to the expansion of the input Var.
+-- This yields shell code like:
+-- ${_tmp1:-$(_tmp1="${foo:-bar}"; echo ${#_tmp1})}
+-- But, this approach won't work for $@, so handle it as a special
+-- case.
+lengthVar v@(Var { varName = VarName varname })
+	| varname /= "@" = do
+		tmpvar <- newVar (NamedLike "tmp")
+		modVar tmpvar $ \tmpname env ->
+			let hack = do
+				setVar tmpvar v
+				cmd ("echo" :: L.Text) $ tmpvar
+					{ expandVar = \_ _ -> Q $
+						"${#" <> tmpname <> "}"
+					}
+			in varname <> ":-" <> toTextParam (Output hack) env
+	| otherwise = return $ simpleVar (VarName "#")
+
+-- | Produces a Var that is a trimmed version of the input Var.
+--
+-- The Quoted Text is removed from the value of the Var, either
+-- from the beginning or from the end.
+--
+-- If the Quoted Text was produced by 'glob', it could match in
+-- multiple ways. You can choose whether to remove the shortest or
+-- the longest match.
+trimVar :: Greediness -> Direction -> Var -> Quoted L.Text -> Script Var
+trimVar ShortestMatch FromBeginning = modVar' "#"
+trimVar LongestMatch FromBeginning = modVar' "##"
+trimVar ShortestMatch FromEnd = modVar' "%"
+trimVar LongestMatch FromEnd = modVar' "%%"
+
+data Greediness = ShortestMatch | LongestMatch
+
+data Direction = FromBeginning | FromEnd
 
 -- | Defines a shell function, and returns an action that can be run to
 -- call the function.
@@ -582,6 +666,32 @@ unlessCmd :: Script () -> Script () -> Script ()
 unlessCmd cond a =
 	ifCmd' ("! " <>) cond $
 		block "then" a
+
+-- | Matches the value of the Var against the Quoted Text (which can
+-- be generated by 'glob'), and runs the Script action associated
+-- with the first match.
+caseOf :: Var -> [(Quoted L.Text, Script ())] -> Script ()
+caseOf _ [] = return ()
+caseOf v l = go True l
+  where
+	-- The case expression is formatted somewhat unusually,
+	-- in order to make it work in both single line and multi-line
+	-- rendering.
+	--
+	-- > case "$foo" in ook) : 
+	-- >     echo got ook
+	-- >     echo yay
+	-- > ;; *) :
+	-- >     echo default
+	-- > ;; esac
+	go _ [] = add $ Cmd $ ";; esac"
+	go atstart ((t, s):rest) = do
+		let leader = if atstart
+			then "case " <> toTextParam v undefined <> " in "
+			else ";; "
+		add $ Cmd $ leader <> getQ t <> ") :"
+		mapM_ (add . indent) =<< runM s
+		go False rest
 
 -- | Creates a block such as "do : ; cmd ; cmd" or "else : ; cmd ; cmd"
 --
