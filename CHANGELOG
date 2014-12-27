@@ -1,8 +1,8 @@
-shell-monad (0.5.0) UNRELEASED; urgency=medium
+shell-monad (0.5.0) unstable; urgency=medium
 
   * newVarContaining is generalized to work for all showable data types.
 
- -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 13:09:40 -0400
+ -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 17:10:23 -0400
 
 shell-monad (0.4.0) unstable; urgency=medium
 
