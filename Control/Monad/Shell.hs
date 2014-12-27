@@ -80,7 +80,7 @@ import System.Posix.Types (Fd)
 import System.Posix.IO (stdInput, stdOutput, stdError)
 
 -- | A shell variable, with an associated phantom type.
-newtype Var v = Var UntypedVar
+newtype Var a = Var UntypedVar
 
 data UntypedVar = V
 	{ varName :: VarName
