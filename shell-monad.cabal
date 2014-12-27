@@ -25,4 +25,4 @@ Library
 
 source-repository head
   type: git
-  location: git://git.kitenet.net/shell-monad.git
+  location: git://git.joeyh.name/shell-monad.git
