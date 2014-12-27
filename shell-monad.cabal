@@ -17,6 +17,7 @@ Extra-Source-Files:
   TODO
   examples/santa.hs
   examples/protocol.hs
+  examples/fib.hs
 
 Library
   GHC-Options: -Wall
