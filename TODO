@@ -18,3 +18,18 @@
   What if there were two kinds of Vars, regular Var and Const.
   The Const would always just expand to its constant value. Then
   we could say `var1 + Const 1`.
+
+  Problem: setVar shouldn't be allowed to be passed a Const. Also several
+  other things that modify Vars.
+
+  Solution: GADT? Would result in: 
+  
+  Term Var a
+  Term Const a
+
+  So, all code that referrs to Var would need one of those,
+  or just:
+
+  Term t a
+
+  This seems fairy reasonable.
