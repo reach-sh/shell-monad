@@ -447,7 +447,7 @@ instance NameHinted NamedLike where
 instance NameHinted (Maybe L.Text) where
 	hinted = id
 
--- Makes a Static Term from any value that can be shown.
+-- | Makes a Static Term from any value that can be shown.
 static :: (Quotable (Val t)) => t -> Term Static t
 static = StaticTerm
 
@@ -756,7 +756,7 @@ block word s = do
 	add $ Cmd $ word <> " :"
 	mapM_ (add . indent) =<< runM s
 
--- | Generates shell code to fill a variable with a line read from stdin.
+-- | Fills a variable with a line read from stdin.
 readVar :: Term Var String -> Script ()
 readVar v = add $ Cmd $ "read " <> getQ (quote (getName v))
 
