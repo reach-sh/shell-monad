@@ -29,6 +29,7 @@ module Control.Monad.Shell (
 	-- * Shell variables
 	NamedLike(..),
 	NameHinted,
+	static,
 	newVar,
 	newVarContaining,
 	setVar,
@@ -94,7 +95,7 @@ import Control.Monad.Shell.Quote
 -- It can also be used for static values: 'Term Static a'
 data Term t a where
 	VarTerm :: UntypedVar -> Term Var a
-	StaticTerm :: Quoted L.Text -> Term Static a
+	StaticTerm :: (Quotable (Val a)) => a -> Term Static a
 
 data Var
 data Static
@@ -367,9 +368,11 @@ instance Param UntypedVar where
 
 -- | Var arguments cause the (quoted) value of a shell variable to be
 -- passed to the command.
-instance Param (Term t a) where
+instance Param (Term Var a) where
 	toTextParam (VarTerm v) = toTextParam v
-	toTextParam (StaticTerm v) = toTextParam v
+
+instance (Show a) => Param (Term Static a) where
+	toTextParam (StaticTerm a) = toTextParam $ Val a
 
 -- | Allows modifying the value of a shell variable before it is passed to
 -- the command.
@@ -448,6 +451,10 @@ instance NameHinted NamedLike where
 
 instance NameHinted (Maybe L.Text) where
 	hinted = id
+
+-- Makes a Static Term from any value that can be shown.
+static :: (Quotable (Val t)) => t -> Term Static t
+static = StaticTerm
 
 -- | Defines a new shell variable, which starts out not being set.
 --
@@ -955,11 +962,43 @@ data Test where
 	TFileExecutable :: (Param p) => p -> Test
 	-- Does the file exist and is executable?
 
+instance (Show a, Num a) => Num (Term Static a) where
+	fromInteger = static . fromInteger
+	(StaticTerm a) + (StaticTerm b) = StaticTerm (a + b)
+	(StaticTerm a) * (StaticTerm b) = StaticTerm (a * b)
+	(StaticTerm a) - (StaticTerm b) = StaticTerm (a - b)
+	abs (StaticTerm a) = StaticTerm (abs a)
+	signum (StaticTerm a) = StaticTerm (signum a)
+
+instance Num Arith where
+	fromInteger = ANum
+	(+) = APlus
+	(*) = AMult
+	(-) = AMinus
+	negate = ANegate
+	abs v = AIf (v `ALT` ANum 0)
+		( AMult v (ANum (-1))
+		, v
+		)
+	signum v = 
+		AIf (v `ALT` ANum 0)
+			( ANum (-1)
+			, AIf (v `AGT` ANum 0)
+				( ANum 1
+				, ANum 0
+				)
+			)
+
 -- | This data type represents shell Arithmetic Expressions.
 --
 -- Note that in shell arithmetic, expressions that would evaluate to a
 -- Bool, such as ANot and AEqual instead evaluate to 1 for True and 0 for
 -- False.
+-- 
+-- Arith is an instance of Num, which allows you to write expressions
+-- like this with shell variables:
+--
+-- > AVar x * (100 + AVar y)
 data Arith
 	= ANum Integer
 	| AVar (Term Var Integer)
@@ -984,7 +1023,8 @@ data Arith
 	| ABitAnd Arith Arith -- ^ AND of the bits of the two arguments
 	| AShiftLeft Arith Arith -- ^ shift left (first argument's bits are shifted by the value of the second argument)
 	| AShiftRight Arith Arith -- ^ shift right
-	| ACond Arith Arith Arith -- ^ if the first argument is non-zero, the result is the second, else the result is the third
+	| AIf Arith (Arith, Arith) -- ^ if the first argument is non-zero, the result is the second, else the result is the third
+	| AAbs -- ^ absolute value
 
 fmtArith :: Env -> Arith -> L.Text
 fmtArith env = go
@@ -992,7 +1032,7 @@ fmtArith env = go
 	go (ANum i) = L.pack (show i)
 	-- shell variable must be expanded without quotes
 	go (AVar (VarTerm v)) = getQ $ expandVar v env (varName v)
-	go (AStatic (StaticTerm v)) = getQ v
+	go (AStatic (StaticTerm v)) = getQ $ quote $ Val v
 	go (ANegate v) = unop "-" v
 	go (APlus a b) = binop a "+" b
 	go (AMinus a b) = binop a "-" b
@@ -1013,7 +1053,7 @@ fmtArith env = go
 	go (ABitAnd a b) = binop a "&" b
 	go (AShiftLeft a b) = binop a "<<" b
 	go (AShiftRight a b) = binop a ">>" b
-	go (ACond c a b) = paren $ go c <> " ? " <> go a <> " : " <> go b
+	go (AIf c (a, b)) = paren $ go c <> " ? " <> go a <> " : " <> go b
 
 	paren t = "(" <> t <> ")"
 

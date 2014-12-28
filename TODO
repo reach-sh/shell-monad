@@ -5,10 +5,3 @@
   case `a` should be some Integral.
 
 * Allow: test (n `TEqual` 42)
-
-* Add an instance: Num a => Num (Var a)
-
-  This could make `var1 + var2` yield `APlus var1 var2`. And so ease
-  construction of Arith expressions.
-
-  Seems very doable!
