@@ -372,7 +372,7 @@ instance Param (Term Var a) where
 	toTextParam (VarTerm v) = toTextParam v
 
 instance (Show a) => Param (Term Static a) where
-	toTextParam (StaticTerm a) = toTextParam $ Val a
+	toTextParam (StaticTerm a) = toTextParam $ quote $ Val a
 
 -- | Allows modifying the value of a shell variable before it is passed to
 -- the command.
