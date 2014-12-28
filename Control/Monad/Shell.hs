@@ -571,7 +571,7 @@ lengthVar v
 					{ expandVar = \_ _ -> Q $
 						"${#" <> tmpname <> "}"
 					}
-			in name <> ":-" <> toTextParam (Output hack) env
+			in getName tmpvar <> ":-" <> toTextParam (Output hack) env
 	| otherwise = return $ simpleVar (VarName "#")
   where
 	name = getName v

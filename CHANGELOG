@@ -3,6 +3,7 @@ shell-monad (0.5.1) UNRELEASED; urgency=medium
   * Added a nice interface to the test command. Test is a GADT,
     which allows constraining numeric tests to only accept
     Integral Vars.
+  * Fix bug in lengthVar.
 
  -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 19:23:36 -0400
 
