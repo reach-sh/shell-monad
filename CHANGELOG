@@ -1,4 +1,4 @@
-shell-monad (0.5.1) UNRELEASED; urgency=medium
+shell-monad (0.6.0) UNRELEASED; urgency=medium
 
   * Added a nice interface to the test command. Test is a GADT,
     which allows constraining numeric tests to only accept
@@ -13,7 +13,7 @@ shell-monad (0.5.1) UNRELEASED; urgency=medium
   * Instead of Val x, use static x.
   * Implemented a Num instance for Arith, so now Arith can be built
     up from regular haskell expressions, for example:
-    AVar x * (100 + AVar y)
+    val x * (100 + val y)
 
  -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 19:23:36 -0400
 

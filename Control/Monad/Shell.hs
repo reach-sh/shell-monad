@@ -72,6 +72,7 @@ module Control.Monad.Shell (
 	test,
 	Test(..),
 	-- * Shell Arithmetic Expressions
+	val,
 	Arith(..),
 	-- * Misc
 	comment,
@@ -984,6 +985,11 @@ instance Num Arith where
 				)
 			)
 
+-- | Lifts a Term to Arith.
+val :: Term t Integer -> Arith
+val t@(VarTerm _) = AVar t
+val t@(StaticTerm _) = AStatic t
+
 -- | This data type represents shell Arithmetic Expressions.
 --
 -- Note that in shell arithmetic, expressions that would evaluate to a
@@ -993,7 +999,7 @@ instance Num Arith where
 -- Arith is an instance of Num, which allows you to write expressions
 -- like this with shell variables:
 --
--- > AVar x * (100 + AVar y)
+-- > AVar x * (100 + val y)
 data Arith
 	= ANum Integer
 	| AVar (Term Var Integer)
