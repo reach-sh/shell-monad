@@ -4,3 +4,15 @@
   hand, it's subptimal when using setVar with a Arith; in this
   case `a` should be some Integral.
 * Allow: test (n `TEqual` 42)
+* Add an instance: Num a => Num (Var a)
+
+  This could make `var1 + var2` yield `APlus var1 var2`. And so ease
+  construction of Arith expressions.
+
+  Seems very doable! However, would it also be possible to support `var1 + 1`?
+  The 1 would need to be first lifted to some kind of Var. It could be done
+  by `one <- newVarContaining 1 ()` and then `var1 + one`. But clumsy..
+
+  What if there were two kinds of Vars, regular Var and Const.
+  The Const would always just expand to its constant value. Then
+  we could say `var1 + Const 1`.
