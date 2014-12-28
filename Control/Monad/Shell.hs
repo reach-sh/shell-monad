@@ -13,7 +13,9 @@ module Control.Monad.Shell (
 	Script,
 	script,
 	linearScript,
+	Term(..),
 	Var,
+	Static,
 	Val(..),
 	Quoted,
 	Quotable(..),
@@ -85,8 +87,17 @@ import System.Posix.IO (stdInput, stdOutput, stdError)
 
 import Control.Monad.Shell.Quote
 
--- | A shell variable, with an associated phantom type.
-newtype Var a = Var UntypedVar
+-- | A term that can be expanded in a shell command line.
+--
+-- Mostly, this is used for shell variables: 'Term Var a'
+--
+-- It can also be used for static values: 'Term Static a'
+data Term t a where
+	VarTerm :: UntypedVar -> Term Var a
+	StaticTerm :: Quoted L.Text -> Term Static a
+
+data Var
+data Static
 
 data UntypedVar = V
 	{ varName :: VarName
@@ -96,8 +107,8 @@ data UntypedVar = V
 newtype VarName = VarName L.Text
 	deriving (Eq, Ord, Show)
 
-simpleVar :: forall a. VarName -> Var a
-simpleVar name = Var $ V
+simpleVar :: forall a. VarName -> Term Var a
+simpleVar name = VarTerm $ V
 	{ varName = name
 	-- Used to expand the variable; can be overridden for other
 	-- types of variable expansion.
@@ -129,8 +140,8 @@ newtype Func = Func L.Text
 class Named t where
 	getName :: t -> L.Text
 
-instance Named (Var t) where
-	getName (Var v) = getName v
+instance Named (Term Var t) where
+	getName (VarTerm v) = getName v
 
 instance Named UntypedVar where
 	getName = getName . varName
@@ -356,8 +367,9 @@ instance Param UntypedVar where
 
 -- | Var arguments cause the (quoted) value of a shell variable to be
 -- passed to the command.
-instance Param (Var a) where
-	toTextParam (Var v) = toTextParam v
+instance Param (Term t a) where
+	toTextParam (VarTerm v) = toTextParam v
+	toTextParam (StaticTerm v) = toTextParam v
 
 -- | Allows modifying the value of a shell variable before it is passed to
 -- the command.
@@ -406,7 +418,7 @@ newtype Output = Output (Script ())
 -- value of the variable, and can modify it, by using eg 'mappend'.
 --
 -- > cmd "rmdir" (WithVar name ("/home/" <>))
-data WithVar a = WithVar (Var a) (Quoted L.Text -> Quoted L.Text)
+data WithVar a = WithVar (Term Var a) (Quoted L.Text -> Quoted L.Text)
 
 -- | Adds an Expr to the script.
 add :: Expr -> Script ()
@@ -443,10 +455,10 @@ instance NameHinted (Maybe L.Text) where
 --
 -- The namehint can influence this name, but is modified to ensure
 -- uniqueness.
-newVar :: (NameHinted namehint) => forall a. namehint -> Script (Var a)
+newVar :: (NameHinted namehint) => forall a. namehint -> Script (Term Var a)
 newVar = newVarContaining' ""
 
-newVarContaining' :: (NameHinted namehint) => L.Text -> namehint -> Script (Var t)
+newVarContaining' :: (NameHinted namehint) => L.Text -> namehint -> Script (Term Var t)
 newVarContaining' value = hinted $ \namehint -> do
 	v <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (getName v <> "=" <> value)], env, v)
@@ -456,16 +468,16 @@ newVarContaining' value = hinted $ \namehint -> do
 --
 -- > s <- newVarContaining "foo bar baz" (NamedLike "s")
 -- > i <- newVarContaining (1 :: Int) (NamedLike "i")
-newVarContaining :: (NameHinted namehint, Quotable (Val t)) => t -> namehint -> Script (Var t)
+newVarContaining :: (NameHinted namehint, Quotable (Val t)) => t -> namehint -> Script (Term Var t)
 newVarContaining = newVarContaining' . getQ . quote . Val
 
 -- | Sets the Var to the value of the param. 
-setVar :: Param param => forall a. Var a -> param -> Script ()
+setVar :: Param param => forall a. Term Var a -> param -> Script ()
 setVar v p = Script $ \env -> 
 	([Cmd (getName v <> "=" <> toTextParam p env)], env, ())
 
 -- | Gets a Var that refers to a global variable, such as PATH
-globalVar :: forall a. L.Text -> Script (Var a)
+globalVar :: forall a. L.Text -> Script (Term Var a)
 globalVar name = Script $ \env ->
 	let v = simpleVar (VarName name)
 	in ([], modifyEnvVars env (S.insert (VarName (getName v))), v)
@@ -477,7 +489,7 @@ globalVar name = Script $ \env ->
 -- func.
 --
 -- (This is `$@` in shell)
-positionalParameters :: forall a. Var a
+positionalParameters :: forall a. Term Var a
 positionalParameters = simpleVar (VarName "@")
 
 -- | Takes the first positional parameter, removing it from
@@ -492,7 +504,7 @@ positionalParameters = simpleVar (VarName "@")
 -- > removefirstfile = script $ do
 -- >   cmd "rm" =<< takeParameter
 -- >   cmd "echo" "remaining parameters:" positionalParameters
-takeParameter :: (NameHinted namehint) => forall a. namehint -> Script (Var a)
+takeParameter :: (NameHinted namehint) => forall a. namehint -> Script (Term Var a)
 takeParameter = hinted $ \namehint -> do
 	p <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (getName p <> "=\"$1\""), Cmd "shift"], env, p)
@@ -501,7 +513,7 @@ takeParameter = hinted $ \namehint -> do
 -- already set to something. For use when the caller is going to generate
 -- some shell script that is guaranteed to clobber any existing value of
 -- the variable.
-newVarUnsafe :: (NameHinted namehint) => forall a. namehint -> Script (Var a)
+newVarUnsafe :: (NameHinted namehint) => forall a. namehint -> Script (Term Var a)
 newVarUnsafe = hinted $ \namehint -> Script $ \env ->
 	let v = go namehint env (0 :: Integer)
 	in ([], modifyEnvVars env (S.insert (VarName (getName v))), v)
@@ -520,20 +532,20 @@ newVarUnsafe = hinted $ \namehint -> Script $ \env ->
 -- | Generates a new Var. Expanding this Var will yield the same
 -- result as expanding the input Var, unless it is empty, in which case
 -- it instead defaults to the expansion of the param.
-defaultVar :: (Param param) => forall a. Var a -> param -> Script (Var a)
+defaultVar :: (Param param) => forall a. Term Var a -> param -> Script (Term Var a)
 defaultVar = funcVar' ":-"
 
 -- | Generates a new Var. If the input Var is empty, then this new Var
 -- will likewise expand to the empty string. But if not, the new Var
 -- expands to the param.
-whenVar :: (Param param) => forall a. Var a -> param -> Script (Var a)
+whenVar :: (Param param) => forall a. Term Var a -> param -> Script (Term Var a)
 whenVar = funcVar' ":+"
 
 -- | Generates a new Var. If the input Var is empty then expanding this new
 -- Var will cause an error to be thrown, using the param as the error
 -- message. If the input Var is not empty, then the new Var expands to the
 -- same thing the input Var expands to.
-errUnlessVar :: (Param param) => forall a. Var a -> param -> Script (Var a)
+errUnlessVar :: (Param param) => forall a. Term Var a -> param -> Script (Term Var a)
 errUnlessVar = funcVar' ":?"
 
 -- | Produces a Var that is a trimmed version of the input Var.
@@ -547,7 +559,7 @@ errUnlessVar = funcVar' ":?"
 --
 -- The act of trimming a Var is assumed to be able to produce a new
 -- Var holding a different data type.
-trimVar :: forall a. Greediness -> Direction -> Var String -> Quoted L.Text -> Script (Var a)
+trimVar :: forall a. Greediness -> Direction -> Term Var String -> Quoted L.Text -> Script (Term Var a)
 trimVar ShortestMatch FromBeginning = funcVar' "#"
 trimVar LongestMatch FromBeginning = funcVar' "##"
 trimVar ShortestMatch FromEnd = funcVar' "%"
@@ -562,7 +574,7 @@ data Direction = FromBeginning | FromEnd
 --
 -- Note that 'lengthVar positionalParameters' expands to the number
 -- of positional parameters.
-lengthVar :: forall a. Var a -> Script (Var Integer)
+lengthVar :: forall a. Term Var a -> Script (Term Var Integer)
 lengthVar v
 	| getName v == "@" = return $ simpleVar (VarName "#")
 	| otherwise = funcVar v ("#" <>)		
@@ -579,23 +591,23 @@ lengthVar v
 -- The returned Var expands to a call to the function: $(func)
 -- Note that it's important this call to the function not contain
 -- any quotes, so that it can be used inside an arithmetic expression.
-funcVar :: forall a b. Var a -> (L.Text -> L.Text) -> Script (Var b)
+funcVar :: forall a b. Term Var a -> (L.Text -> L.Text) -> Script (Term Var b)
 funcVar orig transform = do
-	tmp@(Var internal) <- newVarUnsafe shortname
+	tmp@(VarTerm internal) <- newVarUnsafe shortname :: Script (Term Var ())
 	f <- mkFunc tmp
-	return $ Var $ internal
+	return $ VarTerm $ internal
 		{ expandVar = \env _ -> Q $
 			"$(" <> toLinearScript (fst (runScript env f)) <> ")"
 		}
   where
-	mkFunc :: Var () -> Script (Script ())
+	mkFunc :: Term Var () -> Script (Script ())
 	mkFunc tmp = func shortname $ do
 		setVar tmp orig
 		cmd ("echo" :: L.Text) $ Q $
 			"\"${" <> transform (getName tmp) <> "}\""
 	shortname = NamedLike ""
 
-funcVar' :: (Param param) => forall a b. L.Text -> Var a -> param -> Script (Var b)
+funcVar' :: (Param param) => forall a b. L.Text -> Term Var a -> param -> Script (Term Var b)
 funcVar' op v p = do
 	t <- toTextParam p <$> getEnv
 	funcVar v (<> op <> t)
@@ -654,7 +666,7 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 -- (using the IFS)
 --
 -- The action is run for each part, passed a Var containing the part.
-forCmd :: forall a. Script () -> (Var a -> Script ()) -> Script ()
+forCmd :: forall a. Script () -> (Term Var a -> Script ()) -> Script ()
 forCmd c a = do
 	v <- newVarUnsafe (NamedLike "x")
 	s <- toLinearScript <$> runM c
@@ -708,7 +720,7 @@ unlessCmd cond a =
 -- | Matches the value of the Var against the Quoted Text (which can
 -- be generated by 'glob'), and runs the Script action associated
 -- with the first match.
-caseOf :: forall a. Var a -> [(Quoted L.Text, Script ())] -> Script ()
+caseOf :: forall a. Term Var a -> [(Quoted L.Text, Script ())] -> Script ()
 caseOf _ [] = return ()
 caseOf v l = go True l
   where
@@ -724,8 +736,9 @@ caseOf v l = go True l
 	-- > : ;; esac
 	go _ [] = add $ Cmd $ ";; esac"
 	go atstart ((t, s):rest) = do
+		env <- getEnv
 		let leader = if atstart
-			then "case " <> toTextParam v undefined <> " in "
+			then "case " <> toTextParam v env <> " in "
 			else ": ;; "
 		add $ Cmd $ leader <> getQ t <> ") :"
 		mapM_ (add . indent) =<< runM s
@@ -742,7 +755,7 @@ block word s = do
 	mapM_ (add . indent) =<< runM s
 
 -- | Generates shell code to fill a variable with a line read from stdin.
-readVar :: Var String -> Script ()
+readVar :: Term Var String -> Script ()
 readVar v = add $ Cmd $ "read " <> getQ (quote (getName v))
 
 -- | By default, shell scripts continue running past commands that exit
@@ -913,13 +926,13 @@ data Test where
 	TStrEqual :: (Param p, Param q) => p -> q -> Test
 	-- Do the parameters expand to the same string?
 	TStrNotEqual :: (Param p, Param q) => p -> q -> Test
-	TEqual :: (Integral p, Integral q) => Var p -> Var q -> Test
+	TEqual :: (Integral p, Integral q) => Term Var p -> Term Var q -> Test
 	-- Are the Vars equal? (Compares integer to integer, not string-wise.)
-	TNotEqual :: (Integral p, Integral q) => Var p -> Var q -> Test 
-	TGT :: (Integral p, Integral q) => Var p -> Var q -> Test -- '>'
-	TLT :: (Integral p, Integral q) => Var p -> Var q -> Test -- '<'
-	TGE :: (Integral p, Integral q) => Var p -> Var q -> Test -- '>='
-	TLE :: (Integral p, Integral q) => Var p -> Var q -> Test -- '<='
+	TNotEqual :: (Integral p, Integral q) => Term Var p -> Term Var q -> Test 
+	TGT :: (Integral p, Integral q) => Term Var p -> Term Var q -> Test -- '>'
+	TLT :: (Integral p, Integral q) => Term Var p -> Term Var q -> Test -- '<'
+	TGE :: (Integral p, Integral q) => Term Var p -> Term Var q -> Test -- '>='
+	TLE :: (Integral p, Integral q) => Term Var p -> Term Var q -> Test -- '<='
 	TFileEqual :: (Param p, Param q) => p -> q -> Test
 	-- Are the files equal? (Compares the files' device and inode numbers).
 	TFileNewer :: (Param p, Param q) => p -> q -> Test
@@ -949,7 +962,8 @@ data Test where
 -- False.
 data Arith
 	= ANum Integer
-	| AVar (Var Integer)
+	| AVar (Term Var Integer)
+	| AStatic (Term Static Integer)
 	| ANegate Arith -- ^ negation
 	| APlus Arith Arith -- ^ '+'
 	| AMinus Arith Arith -- ^ '-'
@@ -977,7 +991,8 @@ fmtArith env = go
   where
 	go (ANum i) = L.pack (show i)
 	-- shell variable must be expanded without quotes
-	go (AVar (Var v)) = getQ $ expandVar v env (varName v)
+	go (AVar (VarTerm v)) = getQ $ expandVar v env (varName v)
+	go (AStatic (StaticTerm v)) = getQ v
 	go (ANegate v) = unop "-" v
 	go (APlus a b) = binop a "+" b
 	go (AMinus a b) = binop a "-" b

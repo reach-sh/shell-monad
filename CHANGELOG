@@ -8,6 +8,8 @@ shell-monad (0.5.1) UNRELEASED; urgency=medium
     inside an arithmetic expression.
   * Fixed composition of defaultVar, whenVar, errUnlessVar, and
     trimVar.
+  * The Var data type has been renamed to Term Var.
+  * There is also a Term Static, for static values from haskell.
 
  -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 19:23:36 -0400
 

@@ -9,7 +9,7 @@ main :: IO ()
 main = T.writeFile "fib.sh" $ script $
 	takeParameter () >>= fib >>= cmd "echo"
 
-fib :: Var Integer -> Script (Var Integer)
+fib :: Term Var Integer -> Script (Term Var Integer)
 fib n = do
 	prev <- new1
 	acc <- new1

@@ -29,7 +29,7 @@ mkHohoho = func (NamedLike "hohoho") $ do
 pipeLess :: Script () -> Script ()
 pipeLess c = c -|- cmd "less"
 
-promptFor :: T.Text -> T.Text -> (Var String -> Script ()) -> Script ()
+promptFor :: T.Text -> T.Text -> (Term Var String -> Script ()) -> Script ()
 promptFor prompt defaultname cont = do
 	cmd "printf" (prompt <> " ")
 	var <- newVar (NamedLike prompt)

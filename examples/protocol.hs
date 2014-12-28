@@ -27,7 +27,7 @@ class Monad t => InputsProto t p where
 instance InputsProto IO Proto where
 	input = toProto <$> readLn
 
-instance InputsProto Script (Var String) where
+instance InputsProto Script (Term Var String) where
 	input = do
 		v <- newVar ()
 		readVar v
@@ -66,7 +66,7 @@ toProto s = case break (== ' ') s of
 		| otherwise -> error $ "unknown protocol command: " ++ w
 	(_, _) -> error "protocol splitting error"
 
-handleProto :: Var String -> Script ()
+handleProto :: Term Var String -> Script ()
 handleProto v = do
 	w <- getProtoCommand v
 	caseOf w
@@ -79,20 +79,20 @@ handleProto v = do
 		  )
 		]
 
-handleFoo :: Var String -> Script ()
+handleFoo :: Term Var String -> Script ()
 handleFoo v = toStderr $ cmd "echo" "yay, I got a Foo" v
 
 handleBar :: Script ()
 handleBar = toStderr $ cmd "echo" "yay, I got a Bar"
 
-handleBaz :: Var Int -> Script ()
+handleBaz :: Term Var Int -> Script ()
 handleBaz num = forCmd (cmd "seq" (Val (1 :: Int)) num) $
 	toStderr . cmd "echo" "yay, I got a Baz"
 
-getProtoCommand :: Var String -> Script (Var String)
+getProtoCommand :: Term Var String -> Script (Term Var String)
 getProtoCommand v = trimVar LongestMatch FromEnd v (glob " *")
 
-getProtoRest :: forall t. Var String -> Script (Var t)
+getProtoRest :: forall t. Term Var String -> Script (Term Var t)
 getProtoRest v = trimVar ShortestMatch FromBeginning v (glob "[! ]*[ ]")
 
 main :: IO ()
