@@ -14,8 +14,8 @@ fib n = do
 	prev <- new1
 	acc <- new1
 	forCmd (cmd "seq" prev n) $ \_ -> do
-		setVar acc (AVar acc `APlus` AVar prev)
-		setVar prev (AVar acc `AMinus` AVar prev)
+		setVar acc (AVar acc + AVar prev)
+		setVar prev (AVar acc - AVar prev)
 	return acc
   where
 	new1 = newVarContaining 1 ()
