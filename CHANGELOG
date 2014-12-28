@@ -4,6 +4,10 @@ shell-monad (0.5.1) UNRELEASED; urgency=medium
     which allows constraining numeric tests to only accept
     Integral Vars.
   * Fix bug in lengthVar.
+  * Fix the variable returned by lengthVar so it can be expanded
+    inside an arithmetic expression.
+  * Fixed composition of defaultVar, whenVar, errUnlessVar, and
+    trimVar.
 
  -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 19:23:36 -0400
 

@@ -93,10 +93,6 @@ data UntypedVar = V
 	, expandVar :: Env -> VarName -> Quoted L.Text
 	}
 
--- | Casts from any type of Var to any other type. Use with caution!
-castVar :: forall a b. Var a -> Var b
-castVar (Var v) = Var v
-
 newtype VarName = VarName L.Text
 	deriving (Eq, Ord, Show)
 
@@ -105,6 +101,10 @@ simpleVar name = Var $ V
 	{ varName = name
 	-- Used to expand the variable; can be overridden for other
 	-- types of variable expansion.
+	--
+	-- It's important that the shell code this generates never
+	-- contain any quotes. That would prevent it from being nested
+	-- inside an arithmatic expression.
 	, expandVar = \_ (VarName n) -> Q ("$" <> n)
 	}
 
@@ -195,17 +195,20 @@ instance Monoid Env where
 	mempty = Env mempty mempty
 	mappend a b = Env (envVars a <> envVars b) (envFuncs a <> envFuncs b)
 
+getEnv :: Script Env
+getEnv = Script $ \env -> ([], env, env)
+
 modifyEnvVars :: Env -> (S.Set VarName -> S.Set VarName) -> Env
 modifyEnvVars env f = env { envVars = f (envVars env) }
 
 modifyEnvFuncs :: Env -> (S.Set Func -> S.Set Func) -> Env
 modifyEnvFuncs env f = env { envFuncs = f (envFuncs env) }
 
--- | runScriptuate the monad and generates a list of Expr
+-- | Runs the monad and generates a list of Expr
 gen :: Script f -> [Expr]
 gen = fst . runScript mempty
 
--- | Runs  the monad, and returns a list of Expr and the modified
+-- | Runs the monad, and returns a list of Expr and the modified
 -- environment.
 runScript :: Env -> Script f -> ([Expr], Env)
 runScript env (Script f) = (code, env') where (code, env', _) = f env
@@ -452,7 +455,7 @@ newVarContaining' value = hinted $ \namehint -> do
 -- be anything that can be shown.
 --
 -- > s <- newVarContaining "foo bar baz" (NamedLike "s")
--- > i <- newVarContaining (1 :: Int) (NamedLine "i")
+-- > i <- newVarContaining (1 :: Int) (NamedLike "i")
 newVarContaining :: (NameHinted namehint, Quotable (Val t)) => t -> namehint -> Script (Var t)
 newVarContaining = newVarContaining' . getQ . quote . Val
 
@@ -514,67 +517,24 @@ newVarUnsafe = hinted $ \namehint -> Script $ \env ->
 	
 	genvarname = maybe "v" (L.filter isAlpha)
 
-modVar :: forall a b. Var a -> (L.Text -> Env -> L.Text) -> Script (Var b)
-modVar orig p = do
-	(Var v) <- newVarUnsafe (NamedLike origname)
-	return $ Var $ v
-		{ expandVar = \env _ -> Q $ "${" <> p origname env <> "}"
-		}
-  where
-	origname = getName orig
-
-modVar' :: (Param param) => forall a b. L.Text -> Var a -> param -> Script (Var b)
-modVar' t v p = castVar <$> go
-   where
-	go = modVar v $ \varname env ->
-		varname <> t <> toTextParam p env
-
 -- | Generates a new Var. Expanding this Var will yield the same
 -- result as expanding the input Var, unless it is empty, in which case
 -- it instead defaults to the expansion of the param.
 defaultVar :: (Param param) => forall a. Var a -> param -> Script (Var a)
-defaultVar = modVar' ":-"
+defaultVar = funcVar' ":-"
 
 -- | Generates a new Var. If the input Var is empty, then this new Var
 -- will likewise expand to the empty string. But if not, the new Var
 -- expands to the param.
 whenVar :: (Param param) => forall a. Var a -> param -> Script (Var a)
-whenVar = modVar' ":+"
+whenVar = funcVar' ":+"
 
 -- | Generates a new Var. If the input Var is empty then expanding this new
 -- Var will cause an error to be thrown, using the param as the error
 -- message. If the input Var is not empty, then the new Var expands to the
 -- same thing the input Var expands to.
 errUnlessVar :: (Param param) => forall a. Var a -> param -> Script (Var a)
-errUnlessVar = modVar' ":?"
-
--- | Generates a new Var, which expands to the length of the
--- expansion of the input Var.
---
--- Note that 'lengthVar positionalParameters' expands to the number
--- of positional parameters.
-lengthVar :: forall a. Var a -> Script (Var Integer)
--- Implementation note: ${#${foo:-bar}} is not legal shell code.
--- So, to allow taking the length of Vars that expand to such things,
--- a temporary Var is created, assigned to the expansion of the input Var.
--- This yields shell code like:
--- ${_tmp1:-$(_tmp1="${foo:-bar}"; echo ${#_tmp1})}
--- But, this approach won't work for $@, so handle it as a special
--- case.
-lengthVar v
-	| name /= "@" = do
-		tmpvar@(Var tmpvar') <- newVar (NamedLike "tmp")
-		modVar tmpvar $ \tmpname env ->
-			let hack = do
-				setVar tmpvar v
-				cmd ("echo" :: L.Text) $ Var $ tmpvar'
-					{ expandVar = \_ _ -> Q $
-						"${#" <> tmpname <> "}"
-					}
-			in getName tmpvar <> ":-" <> toTextParam (Output hack) env
-	| otherwise = return $ simpleVar (VarName "#")
-  where
-	name = getName v
+errUnlessVar = funcVar' ":?"
 
 -- | Produces a Var that is a trimmed version of the input Var.
 --
@@ -588,14 +548,57 @@ lengthVar v
 -- The act of trimming a Var is assumed to be able to produce a new
 -- Var holding a different data type.
 trimVar :: forall a. Greediness -> Direction -> Var String -> Quoted L.Text -> Script (Var a)
-trimVar ShortestMatch FromBeginning = modVar' "#"
-trimVar LongestMatch FromBeginning = modVar' "##"
-trimVar ShortestMatch FromEnd = modVar' "%"
-trimVar LongestMatch FromEnd = modVar' "%%"
+trimVar ShortestMatch FromBeginning = funcVar' "#"
+trimVar LongestMatch FromBeginning = funcVar' "##"
+trimVar ShortestMatch FromEnd = funcVar' "%"
+trimVar LongestMatch FromEnd = funcVar' "%%"
 
 data Greediness = ShortestMatch | LongestMatch
 
 data Direction = FromBeginning | FromEnd
+
+-- | Generates a new Var, which expands to the length of the
+-- expansion of the input Var.
+--
+-- Note that 'lengthVar positionalParameters' expands to the number
+-- of positional parameters.
+lengthVar :: forall a. Var a -> Script (Var Integer)
+lengthVar v
+	| getName v == "@" = return $ simpleVar (VarName "#")
+	| otherwise = funcVar v ("#" <>)		
+
+-- To implement a Var -> Var function at the shell level,
+-- generate shell code like this:
+--
+-- func () {
+-- 	t="$orig"; echo "${t'}"
+-- }
+--
+-- Where t' = transform t
+--
+-- The returned Var expands to a call to the function: $(func)
+-- Note that it's important this call to the function not contain
+-- any quotes, so that it can be used inside an arithmetic expression.
+funcVar :: forall a b. Var a -> (L.Text -> L.Text) -> Script (Var b)
+funcVar orig transform = do
+	tmp@(Var internal) <- newVarUnsafe shortname
+	f <- mkFunc tmp
+	return $ Var $ internal
+		{ expandVar = \env _ -> Q $
+			"$(" <> toLinearScript (fst (runScript env f)) <> ")"
+		}
+  where
+	mkFunc :: Var () -> Script (Script ())
+	mkFunc tmp = func shortname $ do
+		setVar tmp orig
+		cmd ("echo" :: L.Text) $ Q $
+			"\"${" <> transform (getName tmp) <> "}\""
+	shortname = NamedLike ""
+
+funcVar' :: (Param param) => forall a b. L.Text -> Var a -> param -> Script (Var b)
+funcVar' op v p = do
+	t <- toTextParam p <$> getEnv
+	funcVar v (<> op <> t)
 
 -- | Defines a shell function, and returns an action that can be run to
 -- call the function.
