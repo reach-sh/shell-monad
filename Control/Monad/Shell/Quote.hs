@@ -40,7 +40,6 @@ instance Quotable L.Text where
 instance Quotable String where
 	quote = quote . L.pack
 
--- | Any Showable value can be quoted, just use 'quote (Val v)'
 instance (Show v) => Quotable (Val v) where
 	quote (Val v) = quote $ show v
 

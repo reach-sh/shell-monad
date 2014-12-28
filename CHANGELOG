@@ -10,6 +10,7 @@ shell-monad (0.5.1) UNRELEASED; urgency=medium
     trimVar.
   * The Var data type has been renamed to Term Var.
   * There is also a Term Static, for static values from haskell.
+  * Instead of Val x, use static x.
   * Implemented a Num instance for Arith, so now Arith can be built
     up from regular haskell expressions, for example:
     AVar x * (100 + AVar y)

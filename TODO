@@ -5,3 +5,6 @@
   case `a` should be some Integral.
 
 * Allow: test (n `TEqual` 42)
+
+* Make Arith instances for Enum, Real, and then Integral.
+  So that AVar / 10 will work..

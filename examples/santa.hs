@@ -9,21 +9,21 @@ default (T.Text)
 main :: IO ()
 main = T.writeFile "santa.sh" $ script $ do
 	hohoho <- mkHohoho
-	hohoho (Val 1)
+	hohoho (static 1)
 
 	promptFor "What's your name?" "virginia" $ \name -> pipeLess $ do
 		cmd "echo" "Let's see what's in" (WithVar name (<> quote "'s")) "stocking!"
 		forCmd (cmd "ls" "-1" (WithVar name (quote "/home/" <>))) $ \f -> do
 			cmd "echo" "a shiny new" f
-			hohoho (Val 1)
+			hohoho (static 1)
 
 	cmd "rm" "/table/cookies" "/table/milk"
-	hohoho (Val 3)
+	hohoho (static 3)
 
-mkHohoho :: Script (Val Int -> Script ())
+mkHohoho :: Script (Term Static Int -> Script ())
 mkHohoho = func (NamedLike "hohoho") $ do
 	num <- takeParameter (NamedLike "num")
-	forCmd (cmd "seq" (Val (1 :: Int)) num) $ \_n ->
+	forCmd (cmd "seq" (static (1 :: Int)) num) $ \_n ->
 		cmd "echo" "Ho, ho, ho!" "Merry xmas!"
 
 pipeLess :: Script () -> Script ()

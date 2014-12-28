@@ -17,7 +17,6 @@ module Control.Monad.Shell (
 	Term,
 	Var,
 	Static,
-	Val(..),
 	Quoted,
 	Quotable(..),
 	glob,
@@ -359,11 +358,6 @@ instance Param L.Text where
 instance Param String where
 	toTextParam = toTextParam . L.pack
 
--- | Any value that can be shown can be passed to 'cmd'; just wrap it
--- inside a Val.
-instance (Show v) => Param (Val v) where
-       toTextParam (Val v) = const $ L.pack (show v)
-
 instance Param UntypedVar where
 	toTextParam v = \env -> "\"" <> getQ (expandVar v env (varName v)) <> "\""
 
@@ -636,11 +630,11 @@ funcVar' op v p = do
 --
 -- > demo = script $ do
 -- >    hohoho <- mkHohoho
--- >    hohoho (Val 1)
+-- >    hohoho (static 1)
 -- >    echo "And I heard him exclaim, ere he rode out of sight ..."
--- >    hohoho (Val 3)
+-- >    hohoho (static 3)
 -- > 
--- > mkHohoho :: Script (Val Int -> Script ())
+-- > mkHohoho :: Script (Term Val Int -> Script ())
 -- > mkHohoho = func (NamedLike "hohoho") $ do
 -- >    num <- takeParameter
 -- >    forCmd (cmd "seq" "1" num) $ \_n ->

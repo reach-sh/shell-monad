@@ -86,7 +86,7 @@ handleBar :: Script ()
 handleBar = toStderr $ cmd "echo" "yay, I got a Bar"
 
 handleBaz :: Term Var Int -> Script ()
-handleBaz num = forCmd (cmd "seq" (Val (1 :: Int)) num) $
+handleBaz num = forCmd (cmd "seq" (static (1 :: Int)) num) $
 	toStderr . cmd "echo" "yay, I got a Baz"
 
 getProtoCommand :: Term Var String -> Script (Term Var String)
