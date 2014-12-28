@@ -126,6 +126,21 @@ glob = Q . L.concatMap escape
 newtype Func = Func L.Text
 	deriving (Eq, Ord, Show)
 
+class Named t where
+	getName :: t -> L.Text
+
+instance Named (Var t) where
+	getName (Var v) = getName v
+
+instance Named UntypedVar where
+	getName = getName . varName
+
+instance Named VarName where
+	getName (VarName n) = n
+
+instance Named Func where
+	getName (Func n) = n
+
 -- | A shell expression.
 data Expr
 	= Cmd L.Text -- ^ a command
@@ -430,9 +445,8 @@ newVar = newVarContaining' ""
 
 newVarContaining' :: (NameHinted namehint) => L.Text -> namehint -> Script (Var t)
 newVarContaining' value = hinted $ \namehint -> do
-	v@(Var (V { varName = VarName name }))
-		<- newVarUnsafe namehint
-	Script $ \env -> ([Cmd (name <> "=" <> value)], env, v)
+	v <- newVarUnsafe namehint
+	Script $ \env -> ([Cmd (getName v <> "=" <> value)], env, v)
 
 -- | Createa a new shell variable, with an initial value which can
 -- be anything that can be shown.
@@ -444,14 +458,14 @@ newVarContaining = newVarContaining' . getQ . quote . Val
 
 -- | Sets the Var to the value of the param. 
 setVar :: Param param => forall a. Var a -> param -> Script ()
-setVar (Var (V { varName = VarName name })) p = Script $ \env -> 
-	([Cmd (name <> "=" <> toTextParam p env)], env, ())
+setVar v p = Script $ \env -> 
+	([Cmd (getName v <> "=" <> toTextParam p env)], env, ())
 
 -- | Gets a Var that refers to a global variable, such as PATH
 globalVar :: forall a. L.Text -> Script (Var a)
 globalVar name = Script $ \env ->
-	let v@(Var v') = simpleVar (VarName name)
-	in ([], modifyEnvVars env (S.insert (varName v')), v)
+	let v = simpleVar (VarName name)
+	in ([], modifyEnvVars env (S.insert (VarName (getName v))), v)
 
 -- | This special Var expands to whatever parameters were passed to the
 -- shell script.
@@ -477,10 +491,8 @@ positionalParameters = simpleVar (VarName "@")
 -- >   cmd "echo" "remaining parameters:" positionalParameters
 takeParameter :: (NameHinted namehint) => forall a. namehint -> Script (Var a)
 takeParameter = hinted $ \namehint -> do
-	p@(Var (V { varName = VarName name}))
-		<- newVarUnsafe namehint
-	Script $ \env -> ([Cmd (name <> "=\"$1\""), Cmd "shift"], env, p)
-
+	p <- newVarUnsafe namehint
+	Script $ \env -> ([Cmd (getName p <> "=\"$1\""), Cmd "shift"], env, p)
 
 -- | Creates a new shell variable, but does not ensure that it's not
 -- already set to something. For use when the caller is going to generate
@@ -488,26 +500,28 @@ takeParameter = hinted $ \namehint -> do
 -- the variable.
 newVarUnsafe :: (NameHinted namehint) => forall a. namehint -> Script (Var a)
 newVarUnsafe = hinted $ \namehint -> Script $ \env ->
-	let v@(Var v') = go namehint env (0 :: Integer)
-	in ([], modifyEnvVars env (S.insert (varName v')), v)
+	let v = go namehint env (0 :: Integer)
+	in ([], modifyEnvVars env (S.insert (VarName (getName v))), v)
   where
 	go namehint env x
-		| S.member (varName v') (envVars env) =
+		| S.member (VarName (getName v)) (envVars env) =
 			go namehint env (succ x)
 		| otherwise = v
 	  where
-		v@(Var v') = simpleVar $ VarName $ "_"
+		v = simpleVar $ VarName $ "_"
 			<> genvarname namehint
 			<> if x == 0 then "" else L.pack (show (x + 1))
 	
 	genvarname = maybe "v" (L.filter isAlpha)
 
 modVar :: forall a b. Var a -> (L.Text -> Env -> L.Text) -> Script (Var b)
-modVar (Var (V { varName = VarName varname })) p = do
-	(Var v) <- newVarUnsafe (NamedLike varname)
+modVar orig p = do
+	(Var v) <- newVarUnsafe (NamedLike origname)
 	return $ Var $ v
-		{ expandVar = \env _ -> Q $ "${" <> p varname env <> "}"
+		{ expandVar = \env _ -> Q $ "${" <> p origname env <> "}"
 		}
+  where
+	origname = getName orig
 
 modVar' :: (Param param) => forall a b. L.Text -> Var a -> param -> Script (Var b)
 modVar' t v p = castVar <$> go
@@ -547,8 +561,8 @@ lengthVar :: forall a. Var a -> Script (Var Integer)
 -- ${_tmp1:-$(_tmp1="${foo:-bar}"; echo ${#_tmp1})}
 -- But, this approach won't work for $@, so handle it as a special
 -- case.
-lengthVar v@(Var (V { varName = VarName varname }))
-	| varname /= "@" = do
+lengthVar v
+	| name /= "@" = do
 		tmpvar@(Var tmpvar') <- newVar (NamedLike "tmp")
 		modVar tmpvar $ \tmpname env ->
 			let hack = do
@@ -557,8 +571,10 @@ lengthVar v@(Var (V { varName = VarName varname }))
 					{ expandVar = \_ _ -> Q $
 						"${#" <> tmpname <> "}"
 					}
-			in varname <> ":-" <> toTextParam (Output hack) env
+			in name <> ":-" <> toTextParam (Output hack) env
 	| otherwise = return $ simpleVar (VarName "#")
+  where
+	name = getName v
 
 -- | Produces a Var that is a trimmed version of the input Var.
 --
@@ -637,9 +653,9 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 -- The action is run for each part, passed a Var containing the part.
 forCmd :: forall a. Script () -> (Var a -> Script ()) -> Script ()
 forCmd c a = do
-	v@(Var (V { varName = VarName varname})) <- newVarUnsafe (NamedLike "x")
+	v <- newVarUnsafe (NamedLike "x")
 	s <- toLinearScript <$> runM c
-	add $ Cmd $ "for " <> varname <> " in $(" <> s <> ")"
+	add $ Cmd $ "for " <> getName v <> " in $(" <> s <> ")"
 	block "do" (a v)
 	add $ Cmd "done"
 
@@ -724,8 +740,7 @@ block word s = do
 
 -- | Generates shell code to fill a variable with a line read from stdin.
 readVar :: Var String -> Script ()
-readVar (Var (V { varName = VarName varname })) = add $
-	Cmd $ "read " <> getQ (quote varname)
+readVar v = add $ Cmd $ "read " <> getQ (quote (getName v))
 
 -- | By default, shell scripts continue running past commands that exit
 -- nonzero. Use "stopOnFailure True" to make the script stop on the first
