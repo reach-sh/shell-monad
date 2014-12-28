@@ -966,25 +966,6 @@ instance (Show a, Num a) => Num (Term Static a) where
 	abs (StaticTerm a) = StaticTerm (abs a)
 	signum (StaticTerm a) = StaticTerm (signum a)
 
-instance Num Arith where
-	fromInteger = ANum
-	(+) = APlus
-	(*) = AMult
-	(-) = AMinus
-	negate = ANegate
-	abs v = AIf (v `ALT` ANum 0)
-		( AMult v (ANum (-1))
-		, v
-		)
-	signum v = 
-		AIf (v `ALT` ANum 0)
-			( ANum (-1)
-			, AIf (v `AGT` ANum 0)
-				( ANum 1
-				, ANum 0
-				)
-			)
-
 -- | Lifts a Term to Arith.
 val :: Term t Integer -> Arith
 val t@(VarTerm _) = AVar t
@@ -1025,6 +1006,7 @@ data Arith
 	| AShiftLeft Arith Arith -- ^ shift left (first argument's bits are shifted by the value of the second argument)
 	| AShiftRight Arith Arith -- ^ shift right
 	| AIf Arith (Arith, Arith) -- ^ if the first argument is non-zero, the result is the second, else the result is the third
+	deriving (Eq, Ord)
 
 fmtArith :: Env -> Arith -> L.Text
 fmtArith env = go
@@ -1059,3 +1041,40 @@ fmtArith env = go
 
 	binop a o b = paren $ go a <> " " <> o <> " " <> go b
 	unop o v = paren $ o <> " " <> go v
+
+instance Num Arith where
+	fromInteger = ANum
+	(+) = APlus
+	(*) = AMult
+	(-) = AMinus
+	negate = ANegate
+	abs v = AIf (v `ALT` ANum 0)
+		( AMult v (ANum (-1))
+		, v
+		)
+	signum v = 
+		AIf (v `ALT` ANum 0)
+			( ANum (-1)
+			, AIf (v `AGT` ANum 0)
+				( ANum 1
+				, ANum 0
+				)
+			)
+
+instance Eq a => Eq (Term Var a) where
+	VarTerm a == VarTerm b = a == b
+
+instance Eq a => Eq (Term Static a) where
+	StaticTerm a == StaticTerm b = a == b
+
+instance Eq UntypedVar where
+	a == b = varName a == varName b
+
+instance Ord a => Ord (Term Var a) where
+	VarTerm a <= VarTerm b = a <= b
+
+instance Ord a => Ord (Term Static a) where
+	StaticTerm a <= StaticTerm b = a <= b
+
+instance Ord UntypedVar where
+	a <= b = varName a <= varName b
