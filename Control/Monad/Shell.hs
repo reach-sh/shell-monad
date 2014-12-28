@@ -7,13 +7,14 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE EmptyDataDecls #-}
 
 module Control.Monad.Shell (
 	-- * Core
 	Script,
 	script,
 	linearScript,
-	Term(..),
+	Term,
 	Var,
 	Static,
 	Val(..),
@@ -1024,7 +1025,6 @@ data Arith
 	| AShiftLeft Arith Arith -- ^ shift left (first argument's bits are shifted by the value of the second argument)
 	| AShiftRight Arith Arith -- ^ shift right
 	| AIf Arith (Arith, Arith) -- ^ if the first argument is non-zero, the result is the second, else the result is the third
-	| AAbs -- ^ absolute value
 
 fmtArith :: Env -> Arith -> L.Text
 fmtArith env = go
