@@ -250,7 +250,7 @@ fmt multiline = go
 	-- 2. So that it's a valid shell expression; any
 	-- Expr, including Comment can be combined with any other.
 	-- For example, Pipe Comment Comment.
-	go (Comment t) ": " <> getQ (quote (L.filter (/= '\n') t))
+	go (Comment t) = ": " <> getQ (quote (L.filter (/= '\n') t))
 	go (Subshell i l) =
 		let (wrap, sep) = if multiline then ("\n", "\n") else ("", ";")
 		in i <> "(" <> wrap <> L.intercalate sep (map (go . indent) l) <> wrap <> i <> ")"
