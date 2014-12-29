@@ -90,15 +90,13 @@ import System.Posix.IO (stdInput, stdOutput, stdError)
 import Control.Monad.Shell.Quote
 
 -- | A term that can be expanded in a shell command line.
---
--- Mostly, this is used for shell variables: 'Term Var a'
---
--- It can also be used for static values: 'Term Static a'
 data Term t a where
 	VarTerm :: UntypedVar -> Term Var a
 	StaticTerm :: (Quotable (Val a)) => a -> Term Static a
 
+-- | Used to represent a shell variable.
 data Var
+-- | Used for a static value.
 data Static
 
 data UntypedVar = V
@@ -362,8 +360,6 @@ instance Param String where
 instance Param UntypedVar where
 	toTextParam v = \env -> "\"" <> getQ (expandVar v env (varName v)) <> "\""
 
--- | Var arguments cause the (quoted) value of a shell variable to be
--- passed to the command.
 instance Param (Term Var a) where
 	toTextParam (VarTerm v) = toTextParam v
 
