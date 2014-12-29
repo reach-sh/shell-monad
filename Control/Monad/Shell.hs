@@ -386,7 +386,7 @@ instance Param Output where
 instance Param Arith where
 	toTextParam a = \env -> 
 		let t = fmtArith env a
-		in "\"$((" <> t <> "))\""
+		in "\"" <> t <> "\""
 
 -- | Allows a function to take any number of Params.
 class CmdParams t where
@@ -1006,7 +1006,7 @@ data Arith
 	deriving (Eq, Ord)
 
 fmtArith :: Env -> Arith -> L.Text
-fmtArith env = go
+fmtArith env arith = "$(( " <> go arith <> " ))"
   where
 	go (ANum i) = L.pack (show i)
 	-- shell variable must be expanded without quotes
