@@ -245,11 +245,12 @@ fmt :: Bool -> Expr -> L.Text
 fmt multiline = go
   where
 	go (Cmd t) = t
-	go (Comment t)
-		| multiline = "# " <> L.filter (/= '\n') t
-		-- Comments go to end of line, so instead
-		-- use : as a no-op command, and pass the comment to it.
-		| otherwise = ": " <> getQ (quote (L.filter (/= '\n') t))
+	-- Comments are represented using : for two reasons:
+	-- 1. To support single line rendering.
+	-- 2. So that it's a valid shell expression; any
+	-- Expr, including Comment can be combined with any other.
+	-- For example, Pipe Comment Comment.
+	go (Comment t) ": " <> getQ (quote (L.filter (/= '\n') t))
 	go (Subshell i l) =
 		let (wrap, sep) = if multiline then ("\n", "\n") else ("", ";")
 		in i <> "(" <> wrap <> L.intercalate sep (map (go . indent) l) <> wrap <> i <> ")"
