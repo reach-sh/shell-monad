@@ -980,7 +980,7 @@ val t@(StaticTerm _) = AStatic t
 -- Arith is an instance of Num, which allows you to write expressions
 -- like this with shell variables:
 --
--- > AVar x * (100 + val y)
+-- > val x * (100 + val y)
 data Arith
 	= ANum Integer
 	| AVar (Term Var Integer)
@@ -1060,6 +1060,18 @@ instance Num Arith where
 				, ANum 0
 				)
 			)
+
+-- | Note that 'fromEnum', 'enumFromTo', and 'enumFromThenTo' cannot be used
+-- with Arith.
+instance Enum Arith where
+	succ a = APlus a (ANum 1)
+	pred a = AMinus a (ANum 1)
+	toEnum = ANum . fromIntegral
+	enumFrom a = a : enumFrom (succ a)
+	enumFromThen a b = a : enumFromThen b ((b `AMult` (ANum 2)) `AMinus` a)
+	fromEnum = error "fromEnum not implemented for Arith"
+	enumFromTo = error "enumFromTo not implemented for Arith"
+	enumFromThenTo = error "enumFromToThen not implemented for Arith"
 
 instance Eq a => Eq (Term Var a) where
 	VarTerm a == VarTerm b = a == b
