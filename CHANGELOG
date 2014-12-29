@@ -1,4 +1,4 @@
-shell-monad (0.6.0) UNRELEASED; urgency=medium
+shell-monad (0.6.0) unstable; urgency=medium
 
   * Added a nice interface to the test command. Test is a GADT,
     which allows constraining numeric tests to only accept
@@ -15,7 +15,7 @@ shell-monad (0.6.0) UNRELEASED; urgency=medium
     up from regular haskell expressions, for example:
     val x * (100 + val y)
 
- -- Joey Hess <id@joeyh.name>  Sat, 27 Dec 2014 19:23:36 -0400
+ -- Joey Hess <id@joeyh.name>  Sun, 28 Dec 2014 20:14:47 -0400
 
 shell-monad (0.5.0) unstable; urgency=medium
 
