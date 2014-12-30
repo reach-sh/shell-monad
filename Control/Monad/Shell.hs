@@ -1003,7 +1003,6 @@ data Arith
 	| AShiftLeft Arith Arith -- ^ shift left (first argument's bits are shifted by the value of the second argument)
 	| AShiftRight Arith Arith -- ^ shift right
 	| AIf Arith (Arith, Arith) -- ^ if the first argument is non-zero, the result is the second, else the result is the third
-	deriving (Eq, Ord)
 
 fmtArith :: Env -> Arith -> L.Text
 fmtArith env arith = "$(( " <> go arith <> " ))"
@@ -1069,21 +1068,3 @@ instance Enum Arith where
 	fromEnum = error "fromEnum not implemented for Arith"
 	enumFromTo = error "enumFromTo not implemented for Arith"
 	enumFromThenTo = error "enumFromToThen not implemented for Arith"
-
-instance Eq a => Eq (Term Var a) where
-	VarTerm a == VarTerm b = a == b
-
-instance Eq a => Eq (Term Static a) where
-	StaticTerm a == StaticTerm b = a == b
-
-instance Eq UntypedVar where
-	a == b = varName a == varName b
-
-instance Ord a => Ord (Term Var a) where
-	VarTerm a <= VarTerm b = a <= b
-
-instance Ord a => Ord (Term Static a) where
-	StaticTerm a <= StaticTerm b = a <= b
-
-instance Ord UntypedVar where
-	a <= b = varName a <= varName b
