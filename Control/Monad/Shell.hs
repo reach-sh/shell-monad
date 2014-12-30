@@ -975,7 +975,7 @@ val t@(StaticTerm _) = AStatic t
 -- False.
 -- 
 -- Arith is an instance of Num, which allows you to write expressions
--- like this with shell variables:
+-- like this with shell variables, that generate Arithmetic Expressions.
 --
 -- > val x * (100 + val y)
 data Arith
