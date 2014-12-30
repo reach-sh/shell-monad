@@ -1106,6 +1106,8 @@ instance Integral Arith where
 
 	quotRem a b = (quot a b, rem a b)
 
+	divMod a b = (div a b, mod a b)
+
 	toInteger = error "toInteger not implemented for Arith"
 
 instance Eq a => Eq (Term Var a) where
