@@ -1070,6 +1070,44 @@ instance Enum Arith where
 	enumFromTo = error "enumFromTo not implemented for Arith"
 	enumFromThenTo = error "enumFromToThen not implemented for Arith"
 
+-- | 'toRational' cannot be used for Arith; this instance is a dummy
+-- to allow the Integral instance.
+instance Real Arith where
+	toRational = error "toRational not implemented for Arith"	
+
+-- | Note that `quot` is ADiv. The implementation if `div` for Arith
+-- is rather more complicated than that.
+--
+-- 'toInteger` cannot be used for Arith.
+instance Integral Arith where
+	-- truncates toward zero
+	quot = ADiv
+
+	-- truncates toward negative infinity
+	div a b = AIf samesign
+		( ADiv a b
+		, ADiv a b `AMinus` AIf (AMod a b `ANotEqual` 0) ( 1, 0 )
+		)
+	  where
+		samesign = 
+			(AGE a 0 `AAnd` AGE b 0)
+				`AOr`
+			(ALT a 0 `AAnd` ALT b 0)
+
+	-- The sign of shell arith % is unspecified if either argument
+	-- is negative. However, rem should only be negative if the
+	-- first argument is negative.
+	rem a b = AIf (AGE a 0)
+		( AMod a (abs b)
+		, AMod (abs a) (abs b) `AMult` (-1)
+		)
+	
+	mod x y = x - (x `div` y) * y
+
+	quotRem a b = (quot a b, rem a b)
+
+	toInteger = error "toInteger not implemented for Arith"
+
 instance Eq a => Eq (Term Var a) where
 	VarTerm a == VarTerm b = a == b
 
