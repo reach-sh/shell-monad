@@ -974,10 +974,6 @@ val t@(StaticTerm _) = AStatic t
 -- Bool, such as ANot and AEqual instead evaluate to 1 for True and 0 for
 -- False.
 -- 
--- Arith is an instance of Num, which allows you to write expressions
--- like this with shell variables, that generate Arithmetic Expressions.
---
--- > val x * (100 + val y)
 data Arith
 	= ANum Integer
 	| AVar (Term Var Integer)
@@ -1038,6 +1034,10 @@ fmtArith env arith = "$(( " <> go arith <> " ))"
 	binop a o b = paren $ go a <> " " <> o <> " " <> go b
 	unop o v = paren $ o <> " " <> go v
 
+-- | Arith is an instance of Num, which allows you to write expressions
+-- like this with shell variables, that generate Arithmetic Expressions.
+--
+-- > val x * (100 + val y)
 instance Num Arith where
 	fromInteger = ANum
 	(+) = APlus
