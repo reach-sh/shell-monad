@@ -1,10 +1,10 @@
-shell-monad (0.6.1) UNRELEASED; urgency=medium
+shell-monad (0.6.1) unstable; urgency=medium
 
   * Always render comments using : , not #
     This ensures that some oddball constuctions, eg making a pipe
     to a comment, always generate valid shell code.
 
- -- Joey Hess <id@joeyh.name>  Sun, 28 Dec 2014 21:20:45 -0400
+ -- Joey Hess <id@joeyh.name>  Tue, 06 Jan 2015 19:13:58 -0400
 
 shell-monad (0.6.0) unstable; urgency=medium
 
