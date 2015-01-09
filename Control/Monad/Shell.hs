@@ -431,8 +431,17 @@ newtype NamedLike = NamedLike L.Text
 -- | Class of values that provide a hint for the name to use for a shell
 -- variable or function.
 --
--- To skip providing a hint, use '()'.
--- To provide a hint, use '(NamedLike \"name\")'.
+-- If you don't want to provide a naming hint, use @()@.
+--
+-- @
+-- v1 <- 'newVar' ()
+-- @
+--
+-- To provide a naming hint, use either 'NamedLike'.
+--
+-- @
+-- v1 <- 'newVar' ('NamedLike' "x")
+-- @
 class NameHinted h where
 	hinted :: (Maybe L.Text -> a) -> h -> a
 
@@ -463,7 +472,7 @@ newVarContaining' value = hinted $ \namehint -> do
 	v <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (getName v <> "=" <> value)], env, v)
 
--- | Createa a new shell variable, with an initial value which can
+-- | Creates a new shell variable, with an initial value which can
 -- be anything that can be shown.
 --
 -- > s <- newVarContaining "foo bar baz" (NamedLike "s")
@@ -747,7 +756,7 @@ caseOf v l = go True l
 -- | Creates a block such as "do : ; cmd ; cmd" or "else : ; cmd ; cmd"
 --
 -- The use of : ensures that the block is not empty, and allows
--- for more regular indetnetion, as well as making the single line
+-- for more regular indentation, as well as making the single line
 -- formatting work.
 block :: L.Text -> Script () -> Script ()
 block word s = do
