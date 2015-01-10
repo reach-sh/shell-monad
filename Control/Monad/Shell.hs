@@ -108,7 +108,7 @@ newtype VarName = VarName L.Text
 	deriving (Eq, Ord, Show)
 
 simpleVar :: forall a. VarName -> Term Var a
-simpleVar name = VarTerm $ V
+simpleVar name = VarTerm V
 	{ varName = name
 	-- Used to expand the variable; can be overridden for other
 	-- types of variable expansion.
@@ -257,7 +257,7 @@ fmt multiline = go
 	go (Pipe e1 e2) = go e1 <> " | " <> go e2
 	go (And e1 e2) = go e1 <> " && " <> go e2
 	go (Or e1 e2) = go e1 <> " || " <> go e2
-	go (Redir e r) = let use = (\t -> go e <> " " <> t) in case r of
+	go (Redir e r) = let use t = go e <> " " <> t in case r of
 		(RedirToFile fd f) ->
 			use $ redirFd fd (Just stdOutput) <> "> " <> L.pack f
 		(RedirToFileAppend fd f) ->
@@ -289,7 +289,7 @@ fmt multiline = go
 -- Redirections have a default Fd; for example, ">" defaults to redirecting
 -- stdout. In this case, the file descriptor number does not need to be
 -- included.
-redirFd :: Fd -> (Maybe Fd) -> L.Text
+redirFd :: Fd -> Maybe Fd -> L.Text
 redirFd fd deffd
 	| Just fd == deffd = ""
 	| otherwise = showFd fd
@@ -348,7 +348,7 @@ cmd c = cmdAll (toTextParam c) []
 
 -- | A Param is anything that can be used as the parameter of a command.
 class Param a where
-	toTextParam :: a -> (Env -> L.Text)
+	toTextParam :: a -> Env -> L.Text
 
 -- | Text arguments are automatically quoted.
 instance Param L.Text where
@@ -359,7 +359,7 @@ instance Param String where
 	toTextParam = toTextParam . L.pack
 
 instance Param UntypedVar where
-	toTextParam v = \env -> "\"" <> getQ (expandVar v env (varName v)) <> "\""
+	toTextParam v env = "\"" <> getQ (expandVar v env (varName v)) <> "\""
 
 instance Param (Term Var a) where
 	toTextParam (VarTerm v) = toTextParam v
@@ -378,13 +378,13 @@ instance Param (Quoted L.Text) where
 
 -- | Allows passing the output of a command as a parameter.
 instance Param Output where
-	toTextParam (Output s) = \env ->
+	toTextParam (Output s) env =
 		let t = toLinearScript $ fst $ runScript env s
 		in "\"$(" <> t <> ")\""
 
 -- | Allows passing an Arithmetic Expression as a parameter.
 instance Param Arith where
-	toTextParam a = \env -> 
+	toTextParam a env =
 		let t = fmtArith env a
 		in "\"" <> t <> "\""
 
@@ -743,7 +743,7 @@ caseOf v l = go True l
 	-- > : ;; *) :
 	-- >     echo default
 	-- > : ;; esac
-	go _ [] = add $ Cmd $ ";; esac"
+	go _ [] = add $ Cmd ";; esac"
 	go atstart ((t, s):rest) = do
 		env <- getEnv
 		let leader = if atstart
@@ -1073,7 +1073,7 @@ instance Enum Arith where
 	pred a = AMinus a (ANum 1)
 	toEnum = ANum . fromIntegral
 	enumFrom a = a : enumFrom (succ a)
-	enumFromThen a b = a : enumFromThen b ((b `AMult` (ANum 2)) `AMinus` a)
+	enumFromThen a b = a : enumFromThen b ((b `AMult` ANum 2) `AMinus` a)
 	fromEnum = error "fromEnum not implemented for Arith"
 	enumFromTo = error "enumFromTo not implemented for Arith"
 	enumFromThenTo = error "enumFromToThen not implemented for Arith"
