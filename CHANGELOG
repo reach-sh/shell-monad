@@ -1,3 +1,9 @@
+shell-monad (0.6.3) UNRELEASED; urgency=medium
+
+  * Add Applicative instance for Script. (Thanks, Abhinav Gupta)
+
+ -- Joey Hess <id@joeyh.name>  Sat, 10 Jan 2015 15:55:18 -0400
+
 shell-monad (0.6.2) unstable; urgency=medium
 
   * Avoid using $_ as this doesn't work in bash.
