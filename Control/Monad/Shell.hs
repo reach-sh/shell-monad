@@ -614,7 +614,7 @@ funcVar orig transform = do
 		setVar tmp orig
 		cmd ("echo" :: L.Text) $ Q $
 			"\"${" <> transform (getName tmp) <> "}\""
-	shortname = NamedLike ""
+	shortname = NamedLike "v"
 
 funcVar' :: (Param param) => forall a b. L.Text -> Term Var a -> param -> Script (Term Var b)
 funcVar' op v p = do
