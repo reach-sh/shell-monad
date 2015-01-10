@@ -185,6 +185,13 @@ data RedirSpec
 newtype Script a = Script (Env -> ([Expr], Env, a))
 	deriving (Functor)
 
+instance Applicative Script where
+	pure a = Script $ \env -> ([], env, a)
+	Script f <*> Script a = Script $ \env0 ->
+		let (expr1, env1, f') = f env0
+		    (expr2, env2, a') = a env1
+		in  (expr1 <> expr2, env2, f' a')
+
 instance Monad Script where
         return ret = Script $ \env -> ([], env, ret)
         a >>= b = Script $ \start -> let
