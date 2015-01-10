@@ -12,6 +12,7 @@ module Control.Monad.Shell.Quote (
 ) where
 
 import qualified Data.Text.Lazy as L
+import Data.String
 import Data.Monoid
 import Data.Char
 
@@ -52,3 +53,6 @@ instance Quotable (Val String) where
 
 -- | An arbitrary value.
 newtype Val v = Val v
+
+instance IsString (Quoted L.Text) where
+	fromString = quote
