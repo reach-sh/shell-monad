@@ -124,8 +124,8 @@ simpleVar name = VarTerm V
 -- When used as a 'Param' to a command, it expands to one parameter per
 -- matching file.
 --
--- > forCmd (cmd "ls" (glob "**/*.cabal")) $ \file ->
--- >     cmd "echo" f
+-- > forCmd (cmd "ls" (glob "*/*.cabal")) $ \file ->
+-- >     cmd "echo" file
 --
 -- When used in a 'caseOf', it matches text against the glob.
 --
