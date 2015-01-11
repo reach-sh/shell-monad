@@ -31,6 +31,7 @@ module Control.Monad.Shell (
 	NameHinted,
 	static,
 	newVar,
+	newVarFrom,
 	newVarContaining,
 	setVar,
 	globalVar,
@@ -485,6 +486,35 @@ newVarContaining' :: (NameHinted namehint) => L.Text -> namehint -> Script (Term
 newVarContaining' value = hinted $ \namehint -> do
 	v <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (getName v <> "=" <> value)], env, v)
+
+-- | Creates a new shell variable with an initial value recorded from any
+-- 'Param'.
+--
+-- For example,
+--
+-- > packageName <- newVarFrom
+-- >      (Output $
+-- >          cmd "grep" "-i" "name\\s*:" (glob "*.cabal") -|-
+-- >          cmd "perl" "-pe" "s/^name\\s*:\\s*//i")
+-- >      (NamedLike "packageName")
+--
+-- Use this with 'WithVar' to store to modified value of a variable in a new
+-- variable.
+--
+-- > home <- globalVar "HOME"
+-- > cabalDir <- newVarContaining (WithVar home (<> "/.cabal")) ()
+-- 
+-- Or to capture the output of an arithmetic operation.
+--
+-- > sum <- newVarFrom (val x `APlus` 1) ()
+--
+newVarFrom
+	:: (NameHinted namehint, Param param)
+	=> param -> namehint -> Script (Term Var t)
+newVarFrom param namehint = do
+	v <- newVarUnsafe namehint
+	Script $ \env ->
+		([Cmd (getName v <> "=" <> toTextParam param env)], env, v)
 
 -- | Creates a new shell variable, with an initial value which can
 -- be anything that can be shown.
