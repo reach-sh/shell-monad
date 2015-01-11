@@ -775,7 +775,7 @@ readVar :: Term Var String -> Script ()
 readVar v = add $ Cmd $ "read " <> getQ (quote (getName v))
 
 -- | By default, shell scripts continue running past commands that exit
--- nonzero. Use "stopOnFailure True" to make the script stop on the first
+-- nonzero. Use 'stopOnFailure True' to make the script stop on the first
 -- such command.
 stopOnFailure :: Bool -> Script ()
 stopOnFailure b = add $ Cmd $ "set " <> (if b then "-" else "+") <> "e"
