@@ -487,7 +487,7 @@ newVarContaining' value = hinted $ \namehint -> do
 	v <- newVarUnsafe namehint
 	Script $ \env -> ([Cmd (getName v <> "=" <> value)], env, v)
 
--- | Creates a new shell variable with an initial value recorded from any
+-- | Creates a new shell variable with an initial value coming from any
 -- 'Param'.
 --
 -- For example,
