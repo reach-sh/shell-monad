@@ -1,4 +1,7 @@
 -- | This is a shell monad, for generating shell scripts.
+--
+-- The emphasis is on generating shell code that will work in any POSIX
+-- compliant shell.
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
