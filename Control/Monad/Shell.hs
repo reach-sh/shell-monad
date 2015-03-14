@@ -968,7 +968,7 @@ mkTest env = go
 	go (TFileNonEmpty p) = unop "-s" (pv p)
 	go (TFileExecutable p) = unop "-x" (pv p)
 
-	paren t = "\\(" <> t <> "\\)"
+	paren t = "\\( " <> t <> " \\)"
 	
 	binop a o b = paren $ a <> " " <> o <> " " <> b
 	unop o v = paren $ o <> " " <> v

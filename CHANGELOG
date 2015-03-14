@@ -1,10 +1,13 @@
-shell-monad (0.6.3) UNRELEASED; urgency=medium
+shell-monad (0.6.3) unstable; urgency=medium
 
   * Add Applicative instance for Script. (Thanks, Abhinav Gupta)
   * Add IsString instance for Quoted Text. (Thanks, Abhinav Gupta)
   * Add newVarFrom. (Thanks, Abhinav Gupta)
+  * Fixed "test (foo)" to generate shell code "test ( foo )", where
+    before it had generated the invalid shell code "test (foo)".
+    (Thanks, Ville)
 
- -- Joey Hess <id@joeyh.name>  Sat, 10 Jan 2015 15:55:18 -0400
+ -- Joey Hess <id@joeyh.name>  Sat, 14 Mar 2015 13:38:13 -0400
 
 shell-monad (0.6.2) unstable; urgency=medium
 
