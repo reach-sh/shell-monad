@@ -20,7 +20,7 @@ Extra-Source-Files:
   examples/fib.hs
 
 Library
-  GHC-Options: -Wall
+  GHC-Options: -Wall -fno-warn-tabs
   Exposed-Modules:
     Control.Monad.Shell
     Control.Monad.Shell.Quote
