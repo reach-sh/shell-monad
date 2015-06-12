@@ -86,10 +86,11 @@ module Control.Monad.Shell (
 import qualified Data.Text.Lazy as L
 import qualified Data.Set as S
 import Data.Monoid
-import Control.Applicative
 import Data.Char
 import System.Posix.Types (Fd)
 import System.Posix.IO (stdInput, stdOutput, stdError)
+import Control.Applicative
+import Prelude
 
 import Control.Monad.Shell.Quote
 
