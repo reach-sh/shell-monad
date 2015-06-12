@@ -141,7 +141,7 @@ glob = Q . L.concatMap escape
   where
 	escape c
 		| isAlphaNum c = L.singleton c
-		| c `elem` "*?[!-:]\\" = L.singleton c
+		| c `elem` ("*?[!-:]\\" :: String) = L.singleton c
 		| otherwise = "\\" <> L.singleton c
 
 -- | A shell function.
