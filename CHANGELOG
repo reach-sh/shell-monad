@@ -1,8 +1,8 @@
-shell-monad (0.6.4) UNRELEASED; urgency=medium
+shell-monad (0.6.4) unstable; urgency=medium
 
   * Fix build with ghc 7.10.
 
- -- Joey Hess <id@joeyh.name>  Fri, 12 Jun 2015 13:55:58 -0400
+ -- Joey Hess <id@joeyh.name>  Fri, 12 Jun 2015 14:09:16 -0400
 
 shell-monad (0.6.3) unstable; urgency=medium
 
