@@ -456,7 +456,7 @@ newtype NamedLike = NamedLike L.Text
 -- v1 <- 'newVar' ()
 -- @
 --
--- To provide a naming hint, use either 'NamedLike'.
+-- To provide a naming hint, use 'NamedLike'.
 --
 -- @
 -- v1 <- 'newVar' ('NamedLike' \"x\")
