@@ -343,7 +343,7 @@ run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 --
 -- > demo = script $ do
 -- >   cmd "echo" "hello, world"
--- >   name <- newVar "name"
+-- >   name <- newVar ()
 -- >   readVar name
 -- >   cmd "echo" "hello" name
 --

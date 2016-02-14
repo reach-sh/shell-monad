@@ -1,3 +1,9 @@
+shell-monad (0.6.5) UNRELEASED; urgency=medium
+
+  * Fix some documentation typos.
+
+ -- Joey Hess <id@joeyh.name>  Sun, 14 Feb 2016 12:25:55 -0400
+
 shell-monad (0.6.4) unstable; urgency=medium
 
   * Fix build with ghc 7.10.
