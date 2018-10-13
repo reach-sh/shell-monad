@@ -1,5 +1,6 @@
 -- | Shell quoting
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -12,7 +13,9 @@ module Control.Monad.Shell.Quote (
 
 import qualified Data.Text.Lazy as L
 import Data.String
-import Data.Monoid
+#if !(MIN_VERSION_base(4,11,0))
+import Data.Semigroup
+#endif
 import Data.Char
 
 -- | A value that is safely quoted so that it can be exposed to the shell.
@@ -20,7 +23,7 @@ import Data.Char
 -- While the constructor is exposed, you should avoid directly constucting
 -- Quoted values. Instead, use 'quote'.
 newtype Quoted a = Q { getQ :: a }
-	deriving (Eq, Ord, Show, Monoid)
+	deriving (Eq, Ord, Show, Semigroup, Monoid)
 
 -- | Quotes a value to allow it to be safely exposed to the shell.
 --

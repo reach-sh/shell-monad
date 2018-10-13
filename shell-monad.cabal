@@ -25,6 +25,8 @@ Library
     Control.Monad.Shell
     Control.Monad.Shell.Quote
   Build-Depends: base (>= 4.5), base < 5, containers, text, unix
+  if !impl(ghc >= 8.0)
+    Build-Depends: semigroups == 0.18.*
 
 source-repository head
   type: git

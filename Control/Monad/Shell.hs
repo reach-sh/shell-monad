@@ -85,7 +85,7 @@ module Control.Monad.Shell (
 
 import qualified Data.Text.Lazy as L
 import qualified Data.Set as S
-import Data.Monoid
+import Data.Semigroup
 import Data.Char
 import System.Posix.Types (Fd)
 import System.Posix.IO (stdInput, stdOutput, stdError)
@@ -221,8 +221,12 @@ data Env = Env
 	, envFuncs :: S.Set Func
 	}
 
+instance Semigroup Env where
+	(<>) a b = Env (envVars a <> envVars b) (envFuncs a <> envFuncs b)
+
 instance Monoid Env where
 	mempty = Env mempty mempty
+	-- this is redundant starting with base-4.11 / GHC 8.4:
 	mappend a b = Env (envVars a <> envVars b) (envFuncs a <> envFuncs b)
 
 getEnv :: Script Env
