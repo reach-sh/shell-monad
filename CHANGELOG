@@ -1,8 +1,10 @@
-shell-monad (0.6.5) UNRELEASED; urgency=medium
+shell-monad (0.6.5) unstable; urgency=medium
 
   * Fix some documentation typos.
+  * Improvements to build with GHC 7.10.3 - 8.4.3. (Thanks, Simon Michael.)
+  * Added inline example to documentation.
 
- -- Joey Hess <id@joeyh.name>  Sun, 14 Feb 2016 12:25:55 -0400
+ -- Joey Hess <id@joeyh.name>  Sat, 13 Oct 2018 15:50:44 -0400
 
 shell-monad (0.6.4) unstable; urgency=medium
 
