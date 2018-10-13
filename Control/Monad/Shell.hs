@@ -1,7 +1,36 @@
 -- | This is a shell monad, for generating shell scripts.
 --
 -- The emphasis is on generating shell code that will work in any POSIX
--- compliant shell.
+-- compliant shell and avoids many common shell pitfalls, including
+-- insufficient quoting, while allowing the Haskell type checker to be
+-- leveraged for additional safety.
+--
+-- Here is a hello world example.
+--
+-- > {-# LANGUAGE OverloadedStrings, ExtendedDefaultRules #-}
+-- > import Control.Monad.Shell
+-- > import Data.Monoid
+-- > import qualified Data.Text.Lazy as T
+-- > import qualified Data.Text.Lazy.IO as T
+-- > default (T.Text)
+-- > 
+-- > main :: IO ()
+-- > main = T.writeFile "hello.sh" $ script $ do
+-- > 	cmd "echo" "hello, world"
+-- > 	username <- newVarFrom (Output (cmd "whoami")) ()
+-- > 	cmd "echo" "from" (WithVar username (<> "'s shell"))
+--
+-- When run, that generates this shell code:
+-- 
+-- > #!/bin/sh
+-- > echo 'hello, world'
+-- > _v="$(whoami)"
+-- > echo from "$_v"''"'"'s shell'
+--
+-- There are several other examples shipped in the examples/ directory
+-- of the shell-monad package. For example, protocol.hs shows how 
+-- shell-monad can be used to implement a shell script that speaks a
+-- protocol that is defined using Haskell data types.
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
