@@ -510,7 +510,7 @@ newVarContaining' value = hinted $ \namehint -> do
 -- variable.
 --
 -- > home <- globalVar "HOME"
--- > cabalDir <- newVarContaining (WithVar home (<> "/.cabal")) ()
+-- > cabalDir <- newVarFrom (WithVar home (<> "/.cabal")) ()
 -- 
 -- Or to capture the output of an arithmetic operation.
 --
