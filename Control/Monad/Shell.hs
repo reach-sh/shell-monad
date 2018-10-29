@@ -142,7 +142,10 @@ newtype VarName = VarName L.Text
 	deriving (Eq, Ord, Show)
 
 simpleVar :: forall a. VarName -> Term Var a
-simpleVar name = VarTerm V
+simpleVar = VarTerm . simpleVar'
+
+simpleVar' :: VarName -> UntypedVar
+simpleVar' name = V
 	{ varName = name
 	-- Used to expand the variable; can be overridden for other
 	-- types of variable expansion.
@@ -604,16 +607,19 @@ takeParameter = hinted $ \namehint -> do
 -- some shell script that is guaranteed to clobber any existing value of
 -- the variable.
 newVarUnsafe :: (NameHinted namehint) => forall a. namehint -> Script (Term Var a)
-newVarUnsafe = hinted $ \namehint -> Script $ \env ->
-	let v = go namehint env (0 :: Integer)
-	in ([], modifyEnvVars env (S.insert (VarName (getName v))), v)
+newVarUnsafe hint = VarTerm <$> newVarUnsafe' hint
+
+newVarUnsafe' :: (NameHinted namehint) => namehint -> Script UntypedVar
+newVarUnsafe' = hinted $ \namehint -> Script $ \env ->
+	let name = go namehint env (0 :: Integer)
+	in ([], modifyEnvVars env (S.insert name), simpleVar' name)
   where
 	go namehint env x
-		| S.member (VarName (getName v)) (envVars env) =
+		| S.member name (envVars env) =
 			go namehint env (succ x)
-		| otherwise = v
+		| otherwise = name
 	  where
-		v = simpleVar $ VarName $ "_"
+		name = VarName $ "_"
 			<> genvarname namehint
 			<> if x == 0 then "" else L.pack (show (x + 1))
 	
@@ -683,9 +689,9 @@ lengthVar v
 -- any quotes, so that it can be used inside an arithmetic expression.
 funcVar :: forall a b. Term Var a -> (L.Text -> L.Text) -> Script (Term Var b)
 funcVar orig transform = do
-	tmp@(VarTerm internal) <- newVarUnsafe shortname :: Script (Term Var ())
-	f <- mkFunc tmp
-	return $ VarTerm $ internal
+	v <- newVarUnsafe' shortname
+	f <- mkFunc (VarTerm v)
+	return $ VarTerm $ v
 		{ expandVar = \env _ -> Q $
 			"$(" <> toLinearScript (fst (runScript env f)) <> ")"
 		}

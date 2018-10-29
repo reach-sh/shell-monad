@@ -1,3 +1,9 @@
+shell-monad (0.6.6) UNRELEASED; urgency=medium
+
+  * Improvements to build with base-4.12 (MonadFail).
+
+ -- Joey Hess <id@joeyh.name>  Mon, 29 Oct 2018 12:25:39 -0400
+
 shell-monad (0.6.5) unstable; urgency=medium
 
   * Fix some documentation typos.
