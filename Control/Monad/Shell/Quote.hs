@@ -30,15 +30,19 @@ newtype Quoted a = Q { getQ :: a }
 -- The method used is to replace ' with '"'"' and wrap the value inside
 -- single quotes. This works for POSIX shells, as well as other shells
 -- like csh.
+--
+-- The single quotes are omitted for simple values that do not need
+-- any quoting.
 class Quotable t where
 	quote :: t -> Quoted L.Text
 
 instance Quotable L.Text where
 	quote t
-		| L.all (\c -> isAlphaNum c || c == '_') t = Q t
+		| L.all bareable t && L.any bareable t = Q t
 		| otherwise = Q $ q <> L.intercalate "'\"'\"'" (L.splitOn q t) <> q
 	  where
 		q = "'"
+		bareable c = isAlphaNum c || c == '_'
 
 instance Quotable String where
 	quote = quote . L.pack

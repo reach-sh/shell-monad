@@ -10,3 +10,8 @@ main = T.writeFile "hello.sh" $ script $ do
 	cmd "echo" "hello, world"
 	username <- newVarFrom (Output (cmd "whoami")) ()
 	cmd "echo" "from" (WithVar username (<> "'s shell"))
+
+	v <- globalVar "SOMEVAR"
+	ifCmd (test $ TStrEqual v "")
+		(cmd "echo" "Bad")
+		(cmd "echo" "Good")
