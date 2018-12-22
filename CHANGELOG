@@ -1,8 +1,8 @@
-shell-monad (0.6.7) UNRELEASED; urgency=medium
+shell-monad (0.6.7) unstable; urgency=medium
 
   * Fix quoting of empty String/Text.
 
- -- Joey Hess <id@joeyh.name>  Sat, 22 Dec 2018 16:33:30 -0400
+ -- Joey Hess <id@joeyh.name>  Sat, 22 Dec 2018 16:35:48 -0400
 
 shell-monad (0.6.6) unstable; urgency=medium
 
