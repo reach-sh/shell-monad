@@ -84,6 +84,8 @@ module Control.Monad.Shell (
 	whenCmd,
 	unlessCmd,
 	caseOf,
+	subshell,
+	group,
 	(-|-),
 	(-&&-),
 	(-||-),
@@ -201,6 +203,7 @@ data Expr
 	= Cmd L.Text -- ^ a command
 	| Comment L.Text -- ^ a comment
 	| Subshell L.Text [Expr] -- ^ expressions run in a sub-shell
+	| Group L.Text [Expr] -- ^ expressions run in a group
 	| Pipe Expr Expr -- ^ Piping the first Expr to the second Expr
 	| And Expr Expr -- ^ &&
 	| Or Expr Expr -- ^ ||
@@ -211,6 +214,7 @@ indent :: Expr -> Expr
 indent (Cmd t) = Cmd $ "\t" <> t
 indent (Comment t) = Comment $ "\t" <> t
 indent (Subshell i l) = Subshell ("\t" <> i) (map indent l)
+indent (Group i l) = Group ("\t" <> i) (map indent l)
 indent (Pipe e1 e2) = Pipe (indent e1) (indent e2)
 indent (Redir e r) = Redir (indent e) r
 indent (And e1 e2) = And (indent e1) (indent e2)
@@ -306,9 +310,14 @@ fmt multiline = go
 	-- Expr, including Comment can be combined with any other.
 	-- For example, Pipe Comment Comment.
 	go (Comment t) = ": " <> getQ (quote (L.filter (/= '\n') t))
+	go (Subshell i []) = i <> "( : )"
 	go (Subshell i l) =
 		let (wrap, sep) = if multiline then ("\n", "\n") else ("", ";")
 		in i <> "(" <> wrap <> L.intercalate sep (map (go . indent) l) <> wrap <> i <> ")"
+	go (Group i []) = i <> "{ :; }"
+	go (Group i l) =
+		let (wrap, sep, end) = if multiline then ("\n", "\n", "") else ("", ";", ";")
+		in i <> "{" <> wrap <> L.intercalate sep (map (go . indent) l) <> end <> wrap <> i <> "}"
 	go (Pipe e1 e2) = go e1 <> " | " <> go e2
 	go (And e1 e2) = go e1 <> " && " <> go e2
 	go (Or e1 e2) = go e1 <> " || " <> go e2
@@ -846,6 +855,18 @@ caseOf v l = go True l
 		mapM_ (add . indent) =<< runM s
 		go False rest
 
+-- | Runs the script in a new subshell.
+subshell :: Script () -> Script ()
+subshell s = do
+    e <- runM s
+    add $ Subshell "" e
+
+-- | Runs the script as a command group in the current subshell.
+group :: Script () -> Script ()
+group s = do
+    e <- runM s
+    add $ Group "" e
+
 -- | Creates a block such as "do : ; cmd ; cmd" or "else : ; cmd ; cmd"
 --
 -- The use of : ensures that the block is not empty, and allows
@@ -873,6 +894,7 @@ ignoreFailure s = runM s >>= mapM_ (add . go)
 	go c@(Cmd _) = Or c true
 	go c@(Comment _) = c
 	go (Subshell i l) = Subshell i (map go l)
+	go (Group i l) = Group i (map go l)
 	-- Assumes pipefail is not set.
 	go (Pipe e1 e2) = Pipe e1 (go e2)
 	-- Note that in shell, a && b || true will result in true;
