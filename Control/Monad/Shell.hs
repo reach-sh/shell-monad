@@ -86,6 +86,7 @@ module Control.Monad.Shell (
 	caseOf,
 	subshell,
 	group,
+	withEnv,
 	(-|-),
 	(-&&-),
 	(-||-),
@@ -200,8 +201,9 @@ instance Named Func where
 
 -- | A shell expression.
 data Expr
-	= Cmd Int L.Text -- ^ a command
+	= Cmd Int [L.Text] L.Text -- ^ a command. may have explicit environment
 	| Raw Int L.Text -- ^ a command. must not have explicit environment
+	| EnvWrap Int L.Text [L.Text] [Expr] -- ^ indented, named script wrapped in a k=v environment
 	| Comment L.Text -- ^ a comment
 	| Subshell L.Text [Expr] -- ^ expressions run in a sub-shell
 	| Group L.Text [Expr] -- ^ expressions run in a group
@@ -212,8 +214,9 @@ data Expr
 
 -- | Indents an Expr
 indent :: Expr -> Expr
-indent (Cmd i t) = Cmd (i + 1) t
+indent (Cmd i kv t) = Cmd (i + 1) kv t
 indent (Raw i t) = Raw (i + 1) t
+indent (EnvWrap i n kv e) = EnvWrap (i + 1) n kv (map indent e)
 indent (Comment t) = Comment $ "\t" <> t
 indent (Subshell i l) = Subshell ("\t" <> i) (map indent l)
 indent (Group i l) = Group ("\t" <> i) (map indent l)
@@ -305,8 +308,15 @@ script = flip mappend "\n" . L.intercalate "\n" .
 fmt :: Bool -> Expr -> L.Text
 fmt multiline = go
   where
-	go (Cmd i t) = L.pack (replicate i '\t') <> t
+	go (Cmd i [] t) = L.pack (replicate i '\t') <> t
+	go (Cmd i env t) = L.pack (replicate i '\t') <> L.intercalate " " env <> " " <> t
 	go (Raw i t) = L.pack (replicate i '\t') <> t
+	go (EnvWrap i n env e) =
+		let (lp, sep) = if multiline then (L.pack (replicate i '\t'), "\n") else ("", ";")
+		in lp <> n <> "() { : " <> sep
+		   <> L.intercalate sep (map (go . indent) e) <> sep
+		   <> lp <> "}" <> sep
+		   <> lp <> L.intercalate " " env <> " " <> n
 	-- Comments are represented using : for two reasons:
 	-- 1. To support single line rendering.
 	-- 2. So that it's a valid shell expression; any
@@ -386,7 +396,7 @@ run :: L.Text -> [L.Text] -> Script ()
 run c ps = add $ newCmd $ L.intercalate " " (map (getQ . quote) (c:ps))
 
 newCmd :: L.Text -> Expr
-newCmd l = Cmd 0 l
+newCmd l = Cmd 0 [] l
 
 raw :: L.Text -> Expr
 raw l = Raw 0 l
@@ -877,6 +887,22 @@ group s = do
     e <- runM s
     add $ Group "" e
 
+-- | Modifies the environment of a script.
+--
+-- Add a variable to the local environment of the script.
+withEnv :: Param a => L.Text -> a -> Script () -> Script ()
+withEnv n v (Script f) = Script $ addEnv . f where
+    -- We can only add K=V keys to simple commands. If the input script contains anything more
+    -- than one simple command we'll have to wrap the script into a fresh function and call
+    -- that with K=V env pairs. 
+    addEnv (e, env, _) = let envPart = n <> "=" <> toTextParam v env in
+        case e of
+            [Cmd i kv l] -> ([Cmd i (envPart : kv) l], env, ())
+            [EnvWrap i envName kv e'] -> ([EnvWrap i envName (envPart : kv) e'], env, ())
+            l -> ([EnvWrap 0 (getName name) [envPart] l], env', ()) where
+                (Script nameFn) = newVarUnsafe' (NamedLike "envfn")
+                (_, env', name) = nameFn env
+
 -- | Creates a block such as "do : ; cmd ; cmd" or "else : ; cmd ; cmd"
 --
 -- The use of : ensures that the block is not empty, and allows
@@ -901,9 +927,10 @@ stopOnFailure b = add $ raw $ "set " <> (if b then "-" else "+") <> "e"
 ignoreFailure :: Script () -> Script ()
 ignoreFailure s = runM s >>= mapM_ (add . go)
   where
-	go c@(Cmd _ _) = Or c true
+	go c@(Cmd _ _ _) = Or c true
 	go c@(Raw _ _) = Or c true
 	go c@(Comment _) = c
+	go (EnvWrap i n kv e) = EnvWrap i n kv (map go e)
 	go (Subshell i l) = Subshell i (map go l)
 	go (Group i l) = Group i (map go l)
 	-- Assumes pipefail is not set.
