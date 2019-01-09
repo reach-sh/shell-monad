@@ -200,7 +200,7 @@ instance Named Func where
 
 -- | A shell expression.
 data Expr
-	= Cmd L.Text -- ^ a command
+	= Cmd Int L.Text -- ^ a command
 	| Comment L.Text -- ^ a comment
 	| Subshell L.Text [Expr] -- ^ expressions run in a sub-shell
 	| Group L.Text [Expr] -- ^ expressions run in a group
@@ -211,7 +211,7 @@ data Expr
 
 -- | Indents an Expr
 indent :: Expr -> Expr
-indent (Cmd t) = Cmd $ "\t" <> t
+indent (Cmd i t) = Cmd (i + 1) t
 indent (Comment t) = Comment $ "\t" <> t
 indent (Subshell i l) = Subshell ("\t" <> i) (map indent l)
 indent (Group i l) = Group ("\t" <> i) (map indent l)
@@ -303,7 +303,7 @@ script = flip mappend "\n" . L.intercalate "\n" .
 fmt :: Bool -> Expr -> L.Text
 fmt multiline = go
   where
-	go (Cmd t) = t
+	go (Cmd i t) = L.pack (replicate i '\t') <> t
 	-- Comments are represented using : for two reasons:
 	-- 1. To support single line rendering.
 	-- 2. So that it's a valid shell expression; any
@@ -344,7 +344,7 @@ fmt multiline = go
 			-- (echo l1; echo l2; ...) | cmd
 			| otherwise ->
 				let heredoc = Subshell L.empty $
-					flip map (L.lines t) $ \l -> Cmd $ 
+					flip map (L.lines t) $ \l -> newCmd $ 
 						"echo " <> getQ (quote l)
 				in go (Pipe heredoc e)
 
@@ -380,7 +380,10 @@ toLinearScript = L.intercalate "; " . map (fmt False)
 
 -- | Adds a shell command to the script.
 run :: L.Text -> [L.Text] -> Script ()
-run c ps = add $ Cmd $ L.intercalate " " (map (getQ . quote) (c:ps))
+run c ps = add $ newCmd $ L.intercalate " " (map (getQ . quote) (c:ps))
+
+newCmd :: L.Text -> Expr
+newCmd l = Cmd 0 l
 
 -- | Variadic and polymorphic version of 'run'
 --
@@ -462,7 +465,7 @@ instance (Param arg, CmdParams result) => CmdParams (arg -> result) where
 instance (f ~ ()) => CmdParams (Script f) where
 	cmdAll c acc = Script $ \env -> 
 		let ps = map (\f -> f env) (c : reverse acc)
-		in ([Cmd $ L.intercalate " " ps], env, ())
+		in ([newCmd $ L.intercalate " " ps], env, ())
 
 -- | The output of a command, or even a more complicated Script
 -- can be passed as a parameter to 'cmd'
@@ -534,7 +537,7 @@ newVar = newVarContaining' ""
 newVarContaining' :: (NameHinted namehint) => L.Text -> namehint -> Script (Term Var t)
 newVarContaining' value = hinted $ \namehint -> do
 	v <- newVarUnsafe namehint
-	Script $ \env -> ([Cmd (getName v <> "=" <> value)], env, v)
+	Script $ \env -> ([newCmd (getName v <> "=" <> value)], env, v)
 
 -- | Creates a new shell variable with an initial value coming from any
 -- 'Param'.
@@ -563,7 +566,7 @@ newVarFrom
 newVarFrom param namehint = do
 	v <- newVarUnsafe namehint
 	Script $ \env ->
-		([Cmd (getName v <> "=" <> toTextParam param env)], env, v)
+		([newCmd (getName v <> "=" <> toTextParam param env)], env, v)
 
 -- | Creates a new shell variable, with an initial value which can
 -- be anything that can be shown.
@@ -576,7 +579,7 @@ newVarContaining = newVarContaining' . getQ . quote . Val
 -- | Sets the Var to the value of the param. 
 setVar :: Param param => forall a. Term Var a -> param -> Script ()
 setVar v p = Script $ \env -> 
-	([Cmd (getName v <> "=" <> toTextParam p env)], env, ())
+	([newCmd (getName v <> "=" <> toTextParam p env)], env, ())
 
 -- | Gets a Var that refers to a global variable, such as PATH
 globalVar :: forall a. L.Text -> Script (Term Var a)
@@ -609,7 +612,7 @@ positionalParameters = simpleVar (VarName "@")
 takeParameter :: (NameHinted namehint) => forall a. namehint -> Script (Term Var a)
 takeParameter = hinted $ \namehint -> do
 	p <- newVarUnsafe namehint
-	Script $ \env -> ([Cmd (getName p <> "=\"$1\""), Cmd "shift"], env, p)
+	Script $ \env -> ([newCmd (getName p <> "=\"$1\""), newCmd "shift"], env, p)
 
 -- | Creates a new shell variable, but does not ensure that it's not
 -- already set to something. For use when the caller is going to generate
@@ -763,7 +766,7 @@ func h s = flip hinted h $ \namehint -> Script $ \env ->
 	
 	genfuncname = maybe "p" (L.filter isAlpha)
 
-	definefunc (Func f) ls = (Cmd $ f <> " () { :") : map indent ls ++ [ Cmd "}" ]
+	definefunc (Func f) ls = (newCmd $ f <> " () { :") : map indent ls ++ [ newCmd "}" ]
 
 	callfunc (Func f) = cmd f
 
@@ -775,17 +778,17 @@ forCmd :: forall a. Script () -> (Term Var a -> Script ()) -> Script ()
 forCmd c a = do
 	v <- newVarUnsafe (NamedLike "x")
 	s <- toLinearScript <$> runM c
-	add $ Cmd $ "for " <> getName v <> " in $(" <> s <> ")"
+	add $ newCmd $ "for " <> getName v <> " in $(" <> s <> ")"
 	block "do" (a v)
-	add $ Cmd "done"
+	add $ newCmd "done"
 
 -- | As long as the first Script exits nonzero, runs the second script.
 whileCmd :: Script () -> Script () -> Script ()
 whileCmd c a = do
 	s <- toLinearScript <$> runM c
-	add $ Cmd $ "while $(" <> s <> ")"
+	add $ newCmd $ "while $(" <> s <> ")"
 	block "do" a
-	add $ Cmd "done"
+	add $ newCmd "done"
 
 -- | if with a Script conditional.
 --
@@ -799,9 +802,9 @@ ifCmd cond thena elsea =
 ifCmd' :: (L.Text -> L.Text) -> Script () -> Script () -> Script ()
 ifCmd' condf cond body = do
 	condl <- runM cond
-	add $ Cmd $ "if " <> condf (singleline condl)
+	add $ newCmd $ "if " <> condf (singleline condl)
 	body
-	add $ Cmd "fi"
+	add $ newCmd "fi"
   where
 	singleline l =
 		let c = case l of
@@ -845,13 +848,13 @@ caseOf v l = go True l
 	-- > : ;; *) :
 	-- >     echo default
 	-- > : ;; esac
-	go _ [] = add $ Cmd ";; esac"
+	go _ [] = add $ newCmd ";; esac"
 	go atstart ((t, s):rest) = do
 		env <- getEnv
 		let leader = if atstart
 			then "case " <> toTextParam v env <> " in "
 			else ": ;; "
-		add $ Cmd $ leader <> getQ t <> ") :"
+		add $ newCmd $ leader <> getQ t <> ") :"
 		mapM_ (add . indent) =<< runM s
 		go False rest
 
@@ -874,24 +877,24 @@ group s = do
 -- formatting work.
 block :: L.Text -> Script () -> Script ()
 block word s = do
-	add $ Cmd $ word <> " :"
+	add $ newCmd $ word <> " :"
 	mapM_ (add . indent) =<< runM s
 
 -- | Fills a variable with a line read from stdin.
 readVar :: Term Var String -> Script ()
-readVar v = add $ Cmd $ "read " <> getQ (quote (getName v))
+readVar v = add $ newCmd $ "read " <> getQ (quote (getName v))
 
 -- | By default, shell scripts continue running past commands that exit
 -- nonzero. Use 'stopOnFailure True' to make the script stop on the first
 -- such command.
 stopOnFailure :: Bool -> Script ()
-stopOnFailure b = add $ Cmd $ "set " <> (if b then "-" else "+") <> "e"
+stopOnFailure b = add $ newCmd $ "set " <> (if b then "-" else "+") <> "e"
 
 -- | Makes a nonzero exit status be ignored.
 ignoreFailure :: Script () -> Script ()
 ignoreFailure s = runM s >>= mapM_ (add . go)
   where
-	go c@(Cmd _) = Or c true
+	go c@(Cmd _ _) = Or c true
 	go c@(Comment _) = c
 	go (Subshell i l) = Subshell i (map go l)
 	go (Group i l) = Group i (map go l)
@@ -903,7 +906,7 @@ ignoreFailure s = runM s >>= mapM_ (add . go)
 	go (Or e1 e2) = Or e1 (go e2)
 	go (Redir e r) = Redir (go e) r
 
-	true = Cmd "true"
+	true = newCmd "true"
 
 -- | Pipes together two Scripts.
 (-|-) :: Script () -> Script () -> Script ()
@@ -1000,7 +1003,7 @@ hereDocument s t = redir s (RedirHereDoc t)
 --
 -- > ifCmd (test (FileExists "foo")) (foo, bar)
 test :: Test -> Script ()
-test t = Script $ \env -> ([Cmd $ "test " <> mkTest env t], env, ())
+test t = Script $ \env -> ([newCmd $ "test " <> mkTest env t], env, ())
 
 mkTest :: Env -> Test -> L.Text
 mkTest env = go
