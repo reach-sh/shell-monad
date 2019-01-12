@@ -7,3 +7,11 @@
 * Allow: test (n `TEqual` 42)
 
   Perhaps by making Test an instance of Num?
+
+* globalVar and withEnv take a Text name of the variable, and if it's not a
+  legal shell variable name, can generate broken shell code.
+
+* The EnvWrap and Raw constructors are an ugly hack around Expr not
+  containing an AST for shell scripts. withEnv needs them to determine
+  which way to set the local environment variable. An AST would improve
+  the internals.
