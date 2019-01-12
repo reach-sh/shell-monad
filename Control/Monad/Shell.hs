@@ -199,12 +199,18 @@ instance Named VarName where
 instance Named Func where
 	getName (Func n) = n
 
+type Indent = Int
+
+type LocalEnv = (L.Text, L.Text)
+
 -- | A shell expression.
 data Expr
-	= Cmd Int [L.Text] L.Text -- ^ a command. may have a local environment
-	| Raw Int L.Text -- ^ a command. must not have local environment
-	| EnvWrap Int L.Text [L.Text] [Expr] -- ^ indented, named script with an environment
-	wrapped in a k=v environment
+	= Cmd Indent [LocalEnv] L.Text
+	-- ^ a command. may have a local environment to be added to it
+	| Raw Indent L.Text
+	-- ^ shell code that is not able to a have a local environment added to it
+	| EnvWrap Indent L.Text [LocalEnv] [Expr]
+	-- ^ named script with a local environment to add to it
 	| Comment L.Text -- ^ a comment
 	| Subshell L.Text [Expr] -- ^ expressions run in a sub-shell
 	| Group L.Text [Expr] -- ^ expressions run in a group
@@ -215,9 +221,9 @@ data Expr
 
 -- | Indents an Expr
 indent :: Expr -> Expr
-indent (Cmd i kv t) = Cmd (i + 1) kv t
+indent (Cmd i localenvs t) = Cmd (i + 1) localenvs t
 indent (Raw i t) = Raw (i + 1) t
-indent (EnvWrap i n kv e) = EnvWrap (i + 1) n kv (map indent e)
+indent (EnvWrap i n localenvs e) = EnvWrap (i + 1) n localenvs (map indent e)
 indent (Comment t) = Comment $ "\t" <> t
 indent (Subshell i l) = Subshell ("\t" <> i) (map indent l)
 indent (Group i l) = Group ("\t" <> i) (map indent l)
@@ -308,15 +314,19 @@ script = flip mappend "\n" . L.intercalate "\n" .
 fmt :: Bool -> Expr -> L.Text
 fmt multiline = go
   where
+	fmtlocalenvs = L.intercalate " " . map (\(k, v) -> k <> "=" <> v)
+
 	go (Cmd i [] t) = L.pack (replicate i '\t') <> t
-	go (Cmd i env t) = L.pack (replicate i '\t') <> L.intercalate " " env <> " " <> t
+	go (Cmd i localenvs t) = L.pack (replicate i '\t') <> fmtlocalenvs localenvs <> " " <> t
 	go (Raw i t) = L.pack (replicate i '\t') <> t
-	go (EnvWrap i n env e) =
-		let (lp, sep) = if multiline then (L.pack (replicate i '\t'), "\n") else ("", ";")
+	go (EnvWrap i n localenvs e) =
+		let (lp, sep) = if multiline
+			then (L.pack (replicate i '\t'), "\n")
+			else ("", ";")
 		in lp <> n <> "() { : " <> sep
 		   <> L.intercalate sep (map (go . indent) e) <> sep
 		   <> lp <> "}" <> sep
-		   <> lp <> L.intercalate " " env <> " " <> n
+		   <> lp <> fmtlocalenvs localenvs <> " " <> n
 	-- Comments are represented using : for two reasons:
 	-- 1. To support single line rendering.
 	-- 2. So that it's a valid shell expression; any
@@ -895,11 +905,11 @@ withEnv n v (Script f) = Script $ addEnv . f
 	-- contains anything more than one simple command we'll have to wrap
 	-- the script into a fresh function and call that with the
 	-- environment.
-	addEnv (e, env, _) = let envPart = n <> "=" <> toTextParam v env
+	addEnv (e, env, _) = let localenv = (n, toTextParam v env)
 		in case e of
-			[Cmd i kv l] -> ([Cmd i (envPart : kv) l], env, ())
-			[EnvWrap i envName kv e'] -> ([EnvWrap i envName (envPart : kv) e'], env, ())
-			l -> ([EnvWrap 0 (getName name) [envPart] l], env', ())
+			[Cmd i localenvs l] -> ([Cmd i (localenv : localenvs) l], env, ())
+			[EnvWrap i envName localenvs e'] -> ([EnvWrap i envName (localenv : localenvs) e'], env, ())
+			l -> ([EnvWrap 0 (getName name) [localenv] l], env', ())
 	  where
 		(Script nameFn) = newVarUnsafe' (NamedLike "envfn")
 		(_, env', name) = nameFn env
@@ -931,7 +941,7 @@ ignoreFailure s = runM s >>= mapM_ (add . go)
 	go c@(Cmd _ _ _) = Or c true
 	go c@(Raw _ _) = Or c true
 	go c@(Comment _) = c
-	go (EnvWrap i n kv e) = EnvWrap i n kv (map go e)
+	go (EnvWrap i n localenvs e) = EnvWrap i n localenvs (map go e)
 	go (Subshell i l) = Subshell i (map go l)
 	go (Group i l) = Group i (map go l)
 	-- Assumes pipefail is not set.
