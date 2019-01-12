@@ -246,11 +246,11 @@ instance Applicative Script where
 		in  (expr1 <> expr2, env2, f' a')
 
 instance Monad Script where
-        return ret = Script $ \env -> ([], env, ret)
-        a >>= b = Script $ \start -> let
-                (left, mid, v) = call a start
-                (right, end, ret) = call (b v) mid
-                in (left ++ right, end, ret)
+	return ret = Script $ \env -> ([], env, ret)
+	a >>= b = Script $ \start -> let
+		(left, mid, v) = call a start
+		(right, end, ret) = call (b v) mid
+		in (left ++ right, end, ret)
 	  where
 		call :: Script f -> Env -> ([Expr], Env, f)
 		call (Script f) = f
@@ -300,7 +300,6 @@ runM s = Script $ \env ->
 script :: Script f -> L.Text
 script = flip mappend "\n" . L.intercalate "\n" . 
 	("#!/bin/sh":) . map (fmt True) . gen
-  where
 
 -- | Formats an Expr to shell  script.
 --
@@ -878,30 +877,32 @@ caseOf v l = go True l
 -- | Runs the script in a new subshell.
 subshell :: Script () -> Script ()
 subshell s = do
-    e <- runM s
-    add $ Subshell "" e
+	e <- runM s
+	add $ Subshell "" e
 
 -- | Runs the script as a command group in the current subshell.
 group :: Script () -> Script ()
 group s = do
-    e <- runM s
-    add $ Group "" e
+	e <- runM s
+	add $ Group "" e
 
 -- | Modifies the environment of a script.
 --
 -- Add a variable to the local environment of the script.
 withEnv :: Param a => L.Text -> a -> Script () -> Script ()
-withEnv n v (Script f) = Script $ addEnv . f where
-    -- We can only add K=V keys to simple commands. If the input script contains anything more
-    -- than one simple command we'll have to wrap the script into a fresh function and call
-    -- that with K=V env pairs. 
-    addEnv (e, env, _) = let envPart = n <> "=" <> toTextParam v env in
-        case e of
-            [Cmd i kv l] -> ([Cmd i (envPart : kv) l], env, ())
-            [EnvWrap i envName kv e'] -> ([EnvWrap i envName (envPart : kv) e'], env, ())
-            l -> ([EnvWrap 0 (getName name) [envPart] l], env', ()) where
-                (Script nameFn) = newVarUnsafe' (NamedLike "envfn")
-                (_, env', name) = nameFn env
+withEnv n v (Script f) = Script $ addEnv . f
+  where
+	-- We can only add K=V keys to simple commands. If the input script contains anything more
+	-- than one simple command we'll have to wrap the script into a fresh function and call
+	-- that with K=V env pairs. 
+	addEnv (e, env, _) = let envPart = n <> "=" <> toTextParam v env
+		in case e of
+			[Cmd i kv l] -> ([Cmd i (envPart : kv) l], env, ())
+			[EnvWrap i envName kv e'] -> ([EnvWrap i envName (envPart : kv) e'], env, ())
+			l -> ([EnvWrap 0 (getName name) [envPart] l], env', ())
+	  where
+		(Script nameFn) = newVarUnsafe' (NamedLike "envfn")
+		(_, env', name) = nameFn env
 
 -- | Creates a block such as "do : ; cmd ; cmd" or "else : ; cmd ; cmd"
 --
