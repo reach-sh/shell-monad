@@ -1,6 +1,6 @@
 shell-monad (0.6.8) UNRELEASED; urgency=medium
 
-  * Added subshell and group.
+  * Added withEnv, subshell and group.
     Thanks, dhivael
 
  -- Joey Hess <id@joeyh.name>  Thu, 03 Jan 2019 16:48:15 -0400
