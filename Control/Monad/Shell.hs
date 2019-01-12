@@ -889,7 +889,7 @@ group s = do
 -- | Modifies the environment of a script.
 --
 -- Add a variable to the local environment of the script.
-withEnv :: Param a => L.Text -> a -> Script () -> Script ()
+withEnv :: Param value => L.Text -> value -> Script () -> Script ()
 withEnv n v (Script f) = Script $ addEnv . f
   where
 	-- We can only add K=V keys to simple commands. If the input script contains anything more
