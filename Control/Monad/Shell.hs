@@ -201,9 +201,10 @@ instance Named Func where
 
 -- | A shell expression.
 data Expr
-	= Cmd Int [L.Text] L.Text -- ^ a command. may have explicit environment
-	| Raw Int L.Text -- ^ a command. must not have explicit environment
-	| EnvWrap Int L.Text [L.Text] [Expr] -- ^ indented, named script wrapped in a k=v environment
+	= Cmd Int [L.Text] L.Text -- ^ a command. may have a local environment
+	| Raw Int L.Text -- ^ a command. must not have local environment
+	| EnvWrap Int L.Text [L.Text] [Expr] -- ^ indented, named script with an environment
+	wrapped in a k=v environment
 	| Comment L.Text -- ^ a comment
 	| Subshell L.Text [Expr] -- ^ expressions run in a sub-shell
 	| Group L.Text [Expr] -- ^ expressions run in a group
@@ -890,9 +891,10 @@ group s = do
 withEnv :: Param value => L.Text -> value -> Script () -> Script ()
 withEnv n v (Script f) = Script $ addEnv . f
   where
-	-- We can only add K=V keys to simple commands. If the input script contains anything more
-	-- than one simple command we'll have to wrap the script into a fresh function and call
-	-- that with K=V env pairs. 
+	-- We can only add K=V to simple commands. If the input script
+	-- contains anything more than one simple command we'll have to wrap
+	-- the script into a fresh function and call that with the
+	-- environment.
 	addEnv (e, env, _) = let envPart = n <> "=" <> toTextParam v env
 		in case e of
 			[Cmd i kv l] -> ([Cmd i (envPart : kv) l], env, ())
