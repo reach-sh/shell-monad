@@ -886,9 +886,7 @@ group s = do
 	e <- runM s
 	add $ Group "" e
 
--- | Modifies the environment of a script.
---
--- Add a variable to the local environment of the script.
+-- | Add a variable to the local environment of the script.
 withEnv :: Param value => L.Text -> value -> Script () -> Script ()
 withEnv n v (Script f) = Script $ addEnv . f
   where
