@@ -1,10 +1,10 @@
-shell-monad (0.6.9) UNRELEASED; urgency=medium
+shell-monad (0.6.9) unstable; urgency=medium
 
   * Prepare for monad of no return, by removing redundant return
     implementation for Script.
   * Drop compatability code for ghc older than 8.4.1.
 
- -- Joey Hess <id@joeyh.name>  Wed, 26 Feb 2020 11:08:40 -0400
+ -- Joey Hess <id@joeyh.name>  Wed, 26 Feb 2020 11:10:55 -0400
 
 shell-monad (0.6.8) unstable; urgency=medium
 
