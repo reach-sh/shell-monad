@@ -1,6 +1,5 @@
 -- | Shell quoting
 
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -13,9 +12,6 @@ module Control.Monad.Shell.Quote (
 
 import qualified Data.Text.Lazy as L
 import Data.String
-#if !(MIN_VERSION_base(4,11,0))
-import Data.Semigroup
-#endif
 import Data.Char
 
 -- | A value that is safely quoted so that it can be exposed to the shell.

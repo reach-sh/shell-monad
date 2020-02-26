@@ -117,12 +117,9 @@ module Control.Monad.Shell (
 
 import qualified Data.Text.Lazy as L
 import qualified Data.Set as S
-import Data.Semigroup
 import Data.Char
 import System.Posix.Types (Fd)
 import System.Posix.IO (stdInput, stdOutput, stdError)
-import Control.Applicative
-import Prelude
 
 import Control.Monad.Shell.Quote
 
@@ -253,7 +250,6 @@ instance Applicative Script where
 		in  (expr1 <> expr2, env2, f' a')
 
 instance Monad Script where
-	return ret = Script $ \env -> ([], env, ret)
 	a >>= b = Script $ \start -> let
 		(left, mid, v) = call a start
 		(right, end, ret) = call (b v) mid
@@ -274,8 +270,6 @@ instance Semigroup Env where
 
 instance Monoid Env where
 	mempty = Env mempty mempty
-	-- this is redundant starting with base-4.11 / GHC 8.4:
-	mappend a b = Env (envVars a <> envVars b) (envFuncs a <> envFuncs b)
 
 getEnv :: Script Env
 getEnv = Script $ \env -> ([], env, env)
