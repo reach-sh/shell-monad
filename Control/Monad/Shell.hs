@@ -69,6 +69,7 @@ module Control.Monad.Shell (
 	globalVar,
 	positionalParameters,
 	takeParameter,
+	scriptPath,
 	defaultVar,
 	whenVar,
 	lengthVar,
@@ -633,6 +634,12 @@ takeParameter :: (NameHinted namehint) => forall a. namehint -> Script (Term Var
 takeParameter = hinted $ \namehint -> do
 	p <- newVarUnsafe namehint
 	Script $ \env -> ([raw (getName p <> "=\"$1\""), raw "shift"], env, p)
+
+-- | ($0 in shell)
+scriptPath :: (NameHinted namehint) => forall a. namehint -> Script (Term Var a)
+scriptPath = hinted $ \namehint -> do
+	p <- newVarUnsafe namehint
+	Script $ \env -> ([raw (getName p <> "=\"$0\"")], env, p)
 
 -- | Creates a new shell variable, but does not ensure that it's not
 -- already set to something. For use when the caller is going to generate
